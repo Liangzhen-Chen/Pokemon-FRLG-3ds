@@ -1,0 +1,6 @@
+# name<TAB>platform<TAB>url<TAB>sha256
+azahar-2126.1	macos-x86_64	https://github.com/azahar-emu/azahar/releases/download/2126.1/azahar-macos-x86_64-2126.1.zip	e47f5dc5457da4951d70328e189564695a4e9cd3e15f75f8e70e78b5939ac5cb
+azahar-2126.1	macos-arm64	https://github.com/azahar-emu/azahar/releases/download/2126.1/azahar-macos-arm64-2126.1.zip	REQUIRES_VERIFICATION
+azahar-2126.1	macos-universal	https://github.com/azahar-emu/azahar/releases/download/2126.1/azahar-macos-universal-2126.1.zip	60903a83320bf19967e7f16efef151d126e6ab522a1643a2f810a549f3099075
+devkitpro-pacman-6.0.2	macos-universal	https://github.com/devkitPro/pacman/releases/download/v6.0.2/devkitpro-pacman-installer.pkg	da74156211cd3d8664ba7fb95544fbc0a2fbef1dd87b1a6bfafb30d2d446cd30
+mGBA-0.10.5	macos-universal	https://github.com/mgba-emu/mgba/releases/download/0.10.5/mGBA-0.10.5-macos.dmg	443b490ec728293dfcde1cb9db160f73d94c457cb1864f3ce0407e60e174b09c

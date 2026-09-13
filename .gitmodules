@@ -1,0 +1,18 @@
+[submodule "external/pokefirered"]
+	path = external/pokefirered
+	url = https://github.com/pret/pokefirered.git
+[submodule "external/agbcc"]
+	path = external/agbcc
+	url = https://github.com/pret/agbcc.git
+[submodule "references/zelda-tmc-3ds"]
+	path = references/zelda-tmc-3ds
+	url = https://github.com/EstebanPdN/zelda-tmc-3ds.git
+[submodule "references/pokeemerald-dualscreen"]
+	path = references/pokeemerald-dualscreen
+	url = https://github.com/Goldoire/pokeemerald-dualscreen.git
+[submodule "references/pokeemerald-multiplatform"]
+	path = references/pokeemerald-multiplatform
+	url = https://github.com/gradenGnostic/pokeemerald-multiplatform.git
+[submodule "references/3ds-examples"]
+	path = references/3ds-examples
+	url = https://github.com/devkitPro/3ds-examples.git

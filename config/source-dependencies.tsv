@@ -1,0 +1,7 @@
+# path<TAB>repository<TAB>commit<TAB>role
+external/pokefirered	https://github.com/pret/pokefirered.git	c75f352304d529f6ba92d4f74b9cf8b5c3810788	primary-source
+external/agbcc	https://github.com/pret/agbcc.git	da598c1d918402c42c0c0d7128ba14567f3175e9	build-dependency
+references/zelda-tmc-3ds	https://github.com/EstebanPdN/zelda-tmc-3ds.git	f9984989e3d96f2bcb4fcc60e69fe9756d74c3c6	read-only-reference
+references/pokeemerald-dualscreen	https://github.com/Goldoire/pokeemerald-dualscreen.git	8ec6cba43fd8eae4cf19b5701b7de717eff62bcc	read-only-reference
+references/pokeemerald-multiplatform	https://github.com/gradenGnostic/pokeemerald-multiplatform.git	db1cab3d2dc9f0e0a9f4a3d67983e5acf30a9a46	read-only-reference
+references/3ds-examples	https://github.com/devkitPro/3ds-examples.git	be2001fee08cf8ec7d3366e095e83f6f75da8942	read-only-reference

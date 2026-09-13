@@ -1,0 +1,80 @@
+# output<TAB>kind; sources are resolved from locked graphics inputs
+graphics/title_screen/firered/game_title_logo.gbapal	palette
+graphics/title_screen/firered/game_title_logo.8bpp.lz	8bpp_lz
+graphics/title_screen/firered/game_title_logo.bin.lz	bin_lz
+graphics/title_screen/firered/box_art_mon.gbapal	palette
+graphics/title_screen/firered/box_art_mon.4bpp.lz	4bpp_lz	-num_tiles 135 -Wnum_tiles
+graphics/title_screen/firered/box_art_mon.bin.lz	bin_lz
+graphics/title_screen/firered/background.gbapal	palette
+graphics/title_screen/copyright_press_start.4bpp.lz	4bpp_lz
+graphics/title_screen/copyright_press_start.bin.lz	bin_lz
+graphics/title_screen/firered/slash.gbapal	palette
+graphics/title_screen/blank_sprite.4bpp.lz	4bpp_lz
+graphics/text_window/unused.4bpp	4bpp
+graphics/text_window/menu_message.4bpp	4bpp
+graphics/interface/std_menu.gbapal	palette
+graphics/intro/copyright.4bpp.lz	4bpp_lz
+graphics/intro/copyright.bin.lz	bin_lz
+graphics/intro/copyright.gbapal	palette
+graphics/intro/game_freak/bg.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/bg.bin.lz	bin_lz
+graphics/intro/game_freak/bg.gbapal	palette
+graphics/intro/game_freak/game_freak.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/logo.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/logo.gbapal	palette
+graphics/intro/game_freak/presents.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/sparkles.gbapal	palette
+graphics/intro/game_freak/sparkles_big.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/sparkles_small.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/star.4bpp.lz	4bpp_lz
+graphics/intro/game_freak/star.gbapal	palette
+graphics/intro/gengar.gbapal	palette
+graphics/intro/nidorino.gbapal	palette
+graphics/intro/scene_1/bg.4bpp.lz	4bpp_lz
+graphics/intro/scene_1/bg.bin.lz	bin_lz
+graphics/intro/scene_1/bg.gbapal	palette
+graphics/intro/scene_1/grass.4bpp.lz	4bpp_lz	-num_tiles 397 -Wnum_tiles
+graphics/intro/scene_1/grass.bin.lz	bin_lz
+graphics/intro/scene_1/grass.gbapal	palette
+graphics/intro/scene_2/bg.4bpp.lz	4bpp_lz
+graphics/intro/scene_2/bg.bin.lz	bin_lz
+graphics/intro/scene_2/bg.gbapal	palette
+graphics/intro/scene_2/gengar.4bpp.lz	4bpp_lz
+graphics/intro/scene_2/gengar_close.4bpp.lz	4bpp_lz	-num_tiles 114 -Wnum_tiles
+graphics/intro/scene_2/gengar_close.bin.lz	bin_lz
+graphics/intro/scene_2/nidorino.4bpp.lz	4bpp_lz
+graphics/intro/scene_2/nidorino_close.4bpp.lz	4bpp_lz	-num_tiles 170 -Wnum_tiles
+graphics/intro/scene_2/nidorino_close.bin.lz	bin_lz
+graphics/intro/scene_2/nidorino_close.gbapal	palette
+graphics/intro/scene_2/plants.4bpp.lz	4bpp_lz	-num_tiles 17 -Wnum_tiles
+graphics/intro/scene_2/plants.bin.lz	bin_lz
+graphics/intro/scene_2/plants.gbapal	palette
+graphics/intro/scene_3/bg.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/bg.bin.lz	bin_lz
+graphics/intro/scene_3/bg.gbapal	palette
+graphics/intro/scene_3/gengar_anim.4bpp.lz	4bpp_lz	-num_tiles 348 -Wnum_tiles
+graphics/intro/scene_3/gengar_anim.bin.lz	bin_lz
+graphics/intro/scene_3/gengar_static.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/grass.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/grass.gbapal	palette
+graphics/intro/scene_3/nidorino.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/recoil_dust.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/recoil_dust.gbapal	palette
+graphics/intro/scene_3/swipe.4bpp.lz	4bpp_lz
+graphics/intro/scene_3/swipe.gbapal	palette
+graphics/title_screen/border_bg.4bpp.lz	4bpp_lz
+graphics/title_screen/firered/blank_flames.4bpp.lz	4bpp_lz
+graphics/title_screen/firered/border_bg.bin.lz	bin_lz
+graphics/title_screen/firered/flames.4bpp.lz	4bpp_lz
+graphics/title_screen/firered/flames.gbapal	palette
+graphics/title_screen/leafgreen/border_bg.bin.lz	bin_lz
+graphics/title_screen/leafgreen/leaves.4bpp.lz	4bpp_lz
+graphics/title_screen/leafgreen/leaves.gbapal	palette
+graphics/title_screen/leafgreen/streak.4bpp.lz	4bpp_lz
+graphics/title_screen/slash.4bpp.lz	4bpp_lz
+graphics/title_screen/unused1.bin.lz	bin_lz
+graphics/title_screen/unused2.bin.lz	bin_lz
+graphics/title_screen/unused3.bin.lz	bin_lz
+graphics/title_screen/unused4.bin.lz	bin_lz
+graphics/title_screen/unused5.bin.lz	bin_lz
+graphics/title_screen/unused6.bin.lz	bin_lz

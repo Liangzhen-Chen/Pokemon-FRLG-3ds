@@ -1,0 +1,36 @@
+# User-provided copyrighted material and saves
+*.gba
+*.sav
+*.pk3
+baserom*
+
+# Downloaded third-party binaries and local caches
+.tools/
+.cache/
+
+# Local project management; provision explicitly for new worktrees/clones
+management/
+
+# Build output
+build/
+build-*/
+dist/
+*.3dsx
+*.cia
+*.elf
+*.smdh
+*.map
+SHA256SUMS
+
+# Local configuration and operating-system files
+.env
+.DS_Store
+__pycache__/
+*.log
+
+# Internal instructions and development records
+/AGENTS.md
+/HANDOFF.md
+/DESIGN-CHINESE-HOME.md
+/docs/
+/artifacts/

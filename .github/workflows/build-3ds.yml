@@ -1,0 +1,28 @@
+name: Build Nintendo 3DS Mode 0 probe
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:20260610
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build P2c3 Mode 0 probe
+        run: make build-3ds
+      - name: Record checksums
+        run: sha256sum platform/3ds/frlg-3ds-p2c3.3dsx platform/3ds/frlg-3ds-p2c3.smdh > platform/3ds/SHA256SUMS
+      - name: Upload 3DS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frlg-3ds-p2c3-${{ github.sha }}
+          path: |
+            platform/3ds/frlg-3ds-p2c3.3dsx
+            platform/3ds/frlg-3ds-p2c3.smdh
+            platform/3ds/SHA256SUMS
+          if-no-files-found: error
