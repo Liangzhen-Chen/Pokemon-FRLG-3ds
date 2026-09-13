@@ -14,7 +14,7 @@ if [ -z "$expected" ] || [ "$(git -C "$upstream" rev-parse HEAD)" != "$expected"
 fi
 : "${FRLG_NATIVE_ASSET_ROOT:?Set the local generated asset root containing graphics/}"
 asset_root=$(CDPATH= cd -- "$FRLG_NATIVE_ASSET_ROOT" && pwd)
-preproc="$upstream/tools/preproc/preproc"
+preproc="${FRLG_NATIVE_PREPROC:-$upstream/tools/preproc/preproc}"
 if [ ! -x "$preproc" ]; then
     printf '%s\n' 'Build the locked upstream tools/preproc first.' >&2
     exit 2
