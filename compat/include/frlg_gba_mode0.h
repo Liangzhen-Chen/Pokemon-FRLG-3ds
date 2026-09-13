@@ -3,7 +3,7 @@
 
 #include "frlg_gba_mode3.h"
 
-/* Bounded Mode 0 text BGs, 4bpp 1D non-affine OBJs, and WIN1.
+/* Bounded Mode 0 text BGs, 4bpp 1D non-affine OBJs, WIN0/WIN1/OBJ windows.
  * Unsupported configurations leave output intact. */
 bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
                           const FrlgGbaDisplaySnapshot *display,

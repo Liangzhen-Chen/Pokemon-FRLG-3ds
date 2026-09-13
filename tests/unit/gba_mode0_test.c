@@ -126,7 +126,7 @@ static void run_obj_tests(void)
     obj(0, 0x0100, 0, 4); rejected();
     obj(0, 0x1000, 0, 4); rejected();
     obj(0, 0x2000, 0, 4); rejected();
-    obj(0, 0x0800, 0, 4); rejected();
+    obj(0, 0x0800, 0, 4); render(); expect(20, 60, 0, 0, 255);
     obj(0, 0x0c00, 0, 4); rejected();
     obj(0, 60, 20 | 0x4000, 1023); rejected();
     obj(0, 0xe200, 0, 4);
@@ -212,7 +212,77 @@ static void run_win1_tests(void)
     rejected();
     frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x42, 0x00f0);
     frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG3 | 0x2000);
-    rejected();
+    render();
+}
+
+static void run_title_window_tests(void)
+{
+    frlg_gba_memory_reset(&memory);
+    for (unsigned int i = 0; i < 128; i++)
+        obj(i, 0x0200, 0, 0);
+    color(0, 0x7c00); color(1, 0x001f); color(2, 0x03e0);
+    memset(memory.vram + 32, 0x11, 32);
+    memset(memory.vram + 64, 0x22, 32);
+    for (unsigned int i = 0; i < 1024; i++)
+    {
+        entry(16, i, 1);
+        entry(20, i, 2);
+    }
+    frlg_gba_display_set_background_control(&memory, 0, 16 << 8);
+    frlg_gba_display_set_background_control(&memory, 1, (20 << 8) | 1);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 | 0x2000);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x0010);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x44, 0x2030);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x48, 0x0001);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x0002);
+    render();
+    expect(0, 31, 0, 255, 0); expect(0, 32, 255, 0, 0);
+    expect(15, 32, 255, 0, 0); expect(16, 32, 0, 255, 0);
+    expect(0, 47, 255, 0, 0); expect(0, 48, 0, 255, 0);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x0818);
+    render();
+    expect(7, 32, 0, 255, 0); expect(8, 32, 255, 0, 0);
+    expect(23, 32, 255, 0, 0); expect(24, 32, 0, 255, 0);
+
+    /* OBJ-window tile 1 has one transparent pixel at its left edge. */
+    memset(memory.vram + 0x10000 + 32, 0x11, 4 * 32);
+    memory.vram[0x10000 + 32] = 0x10;
+    obj(0, 32 | 0x0800, 40 | 0x4000, 1);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 |
+                                        FRLG_GBA_DISPCNT_OBJ | 0xe040);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x2c30);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x44, 0x2030);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x42, 0x2e34);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x46, 0x2030);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x48, 0x0002);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x0100);
+    render();
+    expect(40, 32, 0, 0, 255); expect(41, 32, 255, 0, 0);
+    expect(43, 32, 255, 0, 0); expect(44, 32, 0, 255, 0);
+    expect(46, 32, 0, 255, 0); expect(48, 32, 0, 0, 255);
+    expect(51, 32, 0, 0, 255); expect(52, 32, 255, 0, 0);
+    expect(55, 32, 255, 0, 0); expect(56, 32, 0, 0, 255);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x2e30);
+    render(); expect(44, 32, 255, 0, 0); expect(46, 32, 0, 255, 0);
+
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 | 0x8040);
+    render(); expect(40, 32, 0, 0, 255); expect(41, 32, 0, 0, 255);
+
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 |
+                                        FRLG_GBA_DISPCNT_OBJ | 0x8040);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x50, 0x0081);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x54, 8);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x0100);
+    render(); expect(41, 32, 255, 0, 0);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x2100);
+    render(); expect(41, 32, 255, 123, 123); expect(40, 32, 0, 0, 255);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 |
+                                        FRLG_GBA_DISPCNT_OBJ | 0xa040);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x2c30);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x48, 0x0001);
+    render(); expect(44, 32, 255, 0, 0);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x48, 0x0021);
+    render(); expect(44, 32, 255, 123, 123);
 }
 
 void run_gba_mode0_tests(void)
@@ -280,7 +350,7 @@ void run_gba_mode0_tests(void)
     entry(16, 0, 512); rejected();
     entry(16, 0, 1);
     frlg_gba_display_set_control(&memory, 3); rejected();
-    frlg_gba_display_set_control(&memory, 0x2000); rejected();
+    frlg_gba_display_set_control(&memory, 0x2000); render();
     frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_OBJ); rejected();
     frlg_gba_display_set_control(&memory, 0);
     /* Last legal tile in character block 3 reaches exactly the BG VRAM limit. */
@@ -399,4 +469,5 @@ void run_gba_mode0_tests(void)
     render(); expect(0, 0, 255, 255, 255);
     run_obj_tests();
     run_win1_tests();
+    run_title_window_tests();
 }

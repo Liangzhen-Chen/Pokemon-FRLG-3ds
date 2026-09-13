@@ -80,7 +80,7 @@ typedef struct {
 
 static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo *objects,
                                       unsigned int x, unsigned int y,
-                                      unsigned int *priority, bool *semi)
+                                      unsigned int *priority, bool *semi, bool window_only)
 {
     for (unsigned int i = 0; i < 128; i++)
     {
@@ -92,7 +92,7 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
         const unsigned int height = object->height;
         int ox = attr1 & 511;
         int oy = attr0 & 255;
-        if (!width)
+        if (!width || (((attr0 & 0x0c00) == 0x0800) != window_only))
             continue;
         if (ox >= 256)
             ox -= 512;
@@ -133,25 +133,37 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
             output[pixel] = (FrlgRgb8){255, 255, 255};
         return true;
     }
-    if (display->mode != 0 || (display->control & 0xa000))
+    if (display->mode != 0)
         return false;
 
+    const bool win0 = (display->control & 0x2000) != 0;
     const bool win1 = (display->control & 0x4000) != 0;
-    unsigned int win_x1 = 0, win_x2 = 0, win_y1 = 0, win_y2 = 0;
-    unsigned int win_inside = 0x3f, win_outside = 0x3f;
-    if (win1)
+    const bool objwin = (display->control & 0x8000) != 0;
+    unsigned int win_x1[2] = {0}, win_x2[2] = {0};
+    unsigned int win_y1[2] = {0}, win_y2[2] = {0};
+    unsigned int win_inside[2] = {0x3f, 0x3f};
+    unsigned int win_outside = 0x3f, win_obj = 0x3f;
+    if (win0 || win1 || objwin)
     {
-        const unsigned int horizontal = read16(memory->io + 0x42);
-        const unsigned int vertical = read16(memory->io + 0x46);
-        win_x1 = horizontal >> 8;
-        win_x2 = horizontal & 255;
-        win_y1 = vertical >> 8;
-        win_y2 = vertical & 255;
-        if (win_x1 > win_x2 || win_y1 > win_y2 || win_x2 > FRLG_GBA_SCREEN_WIDTH ||
-            win_y2 > FRLG_GBA_SCREEN_HEIGHT)
-            return false;
-        win_inside = (read16(memory->io + 0x48) >> 8) & 0x3f;
-        win_outside = read16(memory->io + 0x4a) & 0x3f;
+        const unsigned int winin = read16(memory->io + 0x48);
+        const unsigned int winout = read16(memory->io + 0x4a);
+        for (unsigned int i = 0; i < 2; i++)
+        {
+            if (!(display->control & (0x2000u << i)))
+                continue;
+            const unsigned int horizontal = read16(memory->io + 0x40 + i * 2);
+            const unsigned int vertical = read16(memory->io + 0x44 + i * 2);
+            win_x1[i] = horizontal >> 8;
+            win_x2[i] = horizontal & 255;
+            win_y1[i] = vertical >> 8;
+            win_y2[i] = vertical & 255;
+            if (win_x1[i] > win_x2[i] || win_y1[i] > win_y2[i] ||
+                win_x2[i] > FRLG_GBA_SCREEN_WIDTH || win_y2[i] > FRLG_GBA_SCREEN_HEIGHT)
+                return false;
+            win_inside[i] = (winin >> (i * 8)) & 0x3f;
+        }
+        win_outside = winout & 0x3f;
+        win_obj = (winout >> 8) & 0x3f;
     }
 
     /* Validate every enabled map before writing any output. BG data is limited
@@ -188,7 +200,7 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
             if (!(attr0 & 0x100) && (attr0 & 0x200))
                 continue;
             if ((attr0 & (0x100 | 0x1000 | 0x2000)) ||
-                (attr0 & 0x0c00) >= 0x0800 ||
+                (attr0 & 0x0c00) == 0x0c00 ||
                 !obj_size(attr0 >> 14, attr1 >> 14, &width, &height) ||
                 (attr2 & 1023) + width * height / 64 > 1024)
                 return false;
@@ -201,7 +213,7 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
     /* The GF window keeps OBJ and effects enabled together. The mixed case
      * lacks a verified hardware rule, so reject it before touching output. */
     if (win1 && has_semi_obj &&
-        (((win_inside & 0x30) == 0x10) || ((win_outside & 0x30) == 0x10)))
+        (((win_inside[1] & 0x30) == 0x10) || ((win_outside & 0x30) == 0x10)))
         return false;
     const unsigned int bldcnt = read16(memory->io + 0x50);
     const unsigned int mode = (bldcnt >> 6) & 3;
@@ -212,15 +224,31 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
     for (unsigned int y = 0; y < FRLG_GBA_SCREEN_HEIGHT; y++)
     for (unsigned int x = 0; x < FRLG_GBA_SCREEN_WIDTH; x++)
     {
-        const unsigned int window_mask = !win1 ? 0x3f :
-            (x >= win_x1 && x < win_x2 && y >= win_y1 && y < win_y2 ? win_inside : win_outside);
+        unsigned int window_mask = 0x3f;
+        if (win0 || win1 || objwin)
+        {
+            window_mask = win_outside;
+            if (objwin && (display->control & FRLG_GBA_DISPCNT_OBJ))
+            {
+                unsigned int ignored_priority = 0;
+                bool ignored_semi = false;
+                if (obj_palette_index(memory, objects, x, y, &ignored_priority, &ignored_semi, true))
+                    window_mask = win_obj;
+            }
+            if (win1 && x >= win_x1[1] && x < win_x2[1] &&
+                y >= win_y1[1] && y < win_y2[1])
+                window_mask = win_inside[1];
+            if (win0 && x >= win_x1[0] && x < win_x2[0] &&
+                y >= win_y1[0] && y < win_y2[0])
+                window_mask = win_inside[0];
+        }
         unsigned int top_layer = 5, second_layer = 5;
         unsigned int top_index = 0, second_index = 0;
         unsigned int obj_priority = 0;
         bool obj_semi = false, top_semi = false;
         const unsigned int obj_index = (display->control & FRLG_GBA_DISPCNT_OBJ) &&
             (window_mask & 0x10) ?
-            obj_palette_index(memory, objects, x, y, &obj_priority, &obj_semi) : 0;
+            obj_palette_index(memory, objects, x, y, &obj_priority, &obj_semi, false) : 0;
         for (unsigned int priority = 0; priority < 4; priority++)
         {
             if (obj_index && obj_priority == priority)
