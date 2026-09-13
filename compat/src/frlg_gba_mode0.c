@@ -120,9 +120,10 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
     return 0;
 }
 
-bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
-                          const FrlgGbaDisplaySnapshot *display,
-                          FrlgRgb8 *output, size_t output_pixels)
+static bool render_mode0(const FrlgGbaMemory *memory,
+                         const FrlgGbaDisplaySnapshot *display,
+                         FrlgRgb8 *output, size_t output_pixels,
+                         const uint16_t *bldy_by_line)
 {
     unsigned int bg, pixel;
     if (!memory || !display || !output || output_pixels < FRLG_GBA_SCREEN_PIXELS)
@@ -220,10 +221,11 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
     const unsigned int alpha = read16(memory->io + 0x52);
     const unsigned int eva = limited_coefficient(alpha & 31);
     const unsigned int evb = limited_coefficient((alpha >> 8) & 31);
-    const unsigned int ey = limited_coefficient(read16(memory->io + 0x54) & 31);
+    const unsigned int uniform_ey = limited_coefficient(read16(memory->io + 0x54) & 31);
     for (unsigned int y = 0; y < FRLG_GBA_SCREEN_HEIGHT; y++)
     for (unsigned int x = 0; x < FRLG_GBA_SCREEN_WIDTH; x++)
     {
+        const unsigned int ey = bldy_by_line ? limited_coefficient(bldy_by_line[y] & 31) : uniform_ey;
         unsigned int window_mask = 0x3f;
         if (win0 || win1 || objwin)
         {
@@ -303,4 +305,19 @@ bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
         output[y * FRLG_GBA_SCREEN_WIDTH + x] = frlg_gba_bgr555_to_rgb8(result);
     }
     return true;
+}
+
+bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,
+                          const FrlgGbaDisplaySnapshot *display,
+                          FrlgRgb8 *output, size_t output_pixels)
+{
+    return render_mode0(memory, display, output, output_pixels, NULL);
+}
+
+bool frlg_gba_mode0_render_with_bldy(const FrlgGbaMemory *memory,
+                                    const FrlgGbaDisplaySnapshot *display,
+                                    FrlgRgb8 *output, size_t output_pixels,
+                                    const uint16_t bldy_by_line[FRLG_GBA_SCREEN_HEIGHT])
+{
+    return bldy_by_line && render_mode0(memory, display, output, output_pixels, bldy_by_line);
 }

@@ -285,6 +285,31 @@ static void run_title_window_tests(void)
     render(); expect(44, 32, 255, 123, 123);
 }
 
+static void run_scanline_bldy_tests(void)
+{
+    uint16_t by_line[FRLG_GBA_SCREEN_HEIGHT] = {0};
+    frlg_gba_memory_reset(&memory);
+    color(0, 0x001f);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x50, 0x00a0);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x54, 0);
+    by_line[1] = 8;
+    by_line[2] = 16;
+    by_line[159] = 4;
+    assert(frlg_gba_display_snapshot(&memory, &display));
+    assert(frlg_gba_mode0_render_with_bldy(&memory, &display, pixels,
+                                           FRLG_GBA_SCREEN_PIXELS, by_line));
+    expect(0, 0, 255, 0, 0);
+    expect(0, 1, 255, 123, 123);
+    expect(0, 2, 255, 255, 255);
+    expect(0, 3, 255, 0, 0);
+    expect(0, 159, 255, 57, 57);
+    render(); expect(0, 1, 255, 0, 0);
+    memset(pixels, 0x5a, sizeof(pixels));
+    assert(!frlg_gba_mode0_render_with_bldy(&memory, &display, pixels,
+                                            FRLG_GBA_SCREEN_PIXELS, NULL));
+    expect(0, 1, 0x5a, 0x5a, 0x5a);
+}
+
 void run_gba_mode0_tests(void)
 {
     frlg_gba_memory_reset(&memory);
@@ -470,4 +495,5 @@ void run_gba_mode0_tests(void)
     run_obj_tests();
     run_win1_tests();
     run_title_window_tests();
+    run_scanline_bldy_tests();
 }
