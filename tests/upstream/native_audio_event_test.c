@@ -206,6 +206,17 @@ int main(void)
     assert(!IsPokemonCryPlaying(gMPlay_PokemonCry));
     assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
 
+    sCryWave.freq = 81700;
+    state = reset_audio();
+    PlayCry_Normal(SPECIES_CHARIZARD, 0);
+    m4aSoundMain();
+    m4aSoundMain();
+    assert(IsPokemonCryPlaying(gMPlay_PokemonCry));
+    m4aSoundMain();
+    assert(!IsPokemonCryPlaying(gMPlay_PokemonCry));
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
+    sCryWave.freq = 61440;
+
     state = reset_audio();
     m4aSongNumStart(MUS_GAME_FREAK);
     for (unsigned i = 0; i < 4; ++i)

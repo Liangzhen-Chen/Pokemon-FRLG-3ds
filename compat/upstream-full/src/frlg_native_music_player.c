@@ -32,6 +32,10 @@ struct VirtualCryChannel {
 static struct VirtualCryChannel sCryChannels[MAX_POKEMON_CRIES];
 static s16 sCryPitch;
 
+/* FireRed SampleFreqSet uses 59.7275 LCD frames per second; WAV pitch is Hz * 1024. */
+#define LCD_FRAMES_PER_10000_SECONDS 597275u
+#define CRY_PITCH_SCALE 1024u
+
 static struct MusicPlayerInfo *const sPlayers[] = {
     &gMPlayInfo_BGM, &gMPlayInfo_SE1, &gMPlayInfo_SE2, &gMPlayInfo_SE3
 };
@@ -363,9 +367,10 @@ void frlg_native_music_main(void)
         }
         if (track->chan == &virtual->channel)
         {
-            virtual->sample_phase += virtual->wave->freq;
+            virtual->sample_phase += (uint64_t)virtual->wave->freq * 10000u;
             info->clock++;
-            if (virtual->sample_phase >= (uint64_t)virtual->wave->size * 1024u * 60u)
+            if (virtual->sample_phase >=
+                (uint64_t)virtual->wave->size * CRY_PITCH_SCALE * LCD_FRAMES_PER_10000_SECONDS)
             {
                 virtual->channel.track = NULL;
                 virtual->channel.statusFlags = 0;
@@ -383,8 +388,8 @@ struct MusicPlayerInfo *SetPokemonCryTone(struct ToneData *tone)
         tone->wav->size == 0 || tone->wav->freq == 0 || tone->wav->status != 0 ||
         sCryPitch != 15360 || gPokemonCrySong.trackCount != 1 ||
         gPokemonCrySong.releaseValue != 0 || gPokemonCrySong.unkCmd0DParam != 0 ||
-        (uint64_t)gPokemonCrySong.length * tone->wav->freq <
-            (uint64_t)tone->wav->size * 1024u * 60u)
+        (uint64_t)gPokemonCrySong.length * tone->wav->freq * 10000u <
+            (uint64_t)tone->wav->size * CRY_PITCH_SCALE * LCD_FRAMES_PER_10000_SECONDS)
     {
         fail_sequence();
         return NULL;
