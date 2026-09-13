@@ -1,5 +1,7 @@
 #include "global.h"
 #include "libgcnmultiboot.h"
+#include "link.h"
+#include "main.h"
 #include "frlg_native_multiboot.h"
 #include <string.h>
 
@@ -7,6 +9,7 @@ enum {
     GCMB_BASE_DEST = 0x20,
     GCMB_CUR_DEST = 0x24,
     GCMB_HANDLER = 0x28,
+    REG_TM3CNT_H_OFFSET = 0x10e,
     REG_RCNT_OFFSET = 0x134,
     REG_JOYCNT_OFFSET = 0x140,
     REG_JOYSTAT_OFFSET = 0x158,
@@ -18,6 +21,7 @@ enum {
 
 _Static_assert(sizeof(struct GcmbStruct) == 0x2c, "GBA multiboot layout changed");
 static FrlgNativeMultibootStatus status;
+static bool offline_quit_pending;
 
 FrlgNativeMultibootStatus frlg_native_multiboot_status(void)
 {
@@ -55,6 +59,7 @@ void GameCubeMultiBoot_Init(struct GcmbStruct *mb)
     uint8_t old_vcount = bytes[3];
     uint16_t ime = read_reg(REG_IME_OFFSET);
     status = FRLG_NATIVE_MULTIBOOT_OK;
+    offline_quit_pending = false;
     write_reg(REG_IME_OFFSET, 0);
     memset(bytes, 0, GCMB_BASE_DEST);
     bytes[1] = old_vcount;
@@ -109,6 +114,7 @@ void GameCubeMultiBoot_Quit(void)
     write_reg(REG_IF_OFFSET, read_reg(REG_IF_OFFSET) & (uint16_t)~SERIAL_IRQ);
     write_reg(REG_IE_OFFSET, read_reg(REG_IE_OFFSET) & (uint16_t)~SERIAL_IRQ);
     write_reg(REG_IME_OFFSET, ime);
+    offline_quit_pending = true;
 }
 
 void GameCubeMultiBoot_HandleSerialInterrupt(struct GcmbStruct *mb)
@@ -122,4 +128,30 @@ void GameCubeMultiBoot_ExecuteProgram(struct GcmbStruct *mb)
 {
     if (mb->gcmb_field_2 == 2 && status == FRLG_NATIVE_MULTIBOOT_OK)
         status = FRLG_NATIVE_MULTIBOOT_EXECUTE_UNSUPPORTED;
+}
+
+void SerialCB(void)
+{
+    if (status == FRLG_NATIVE_MULTIBOOT_OK)
+        status = FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED;
+}
+
+void ResetSerial(void)
+{
+    if (status != FRLG_NATIVE_MULTIBOOT_OK)
+        return;
+    if (!offline_quit_pending || gMain.state != 142 || gMain.serialCallback != SerialCB ||
+        (read_reg(REG_IE_OFFSET) & SERIAL_IRQ) || read_reg(REG_RCNT_OFFSET) != 0x8000 ||
+        (read_reg(REG_JOYCNT_OFFSET) & 0x40) ||
+        (read_reg(REG_TM3CNT_H_OFFSET) & 0x80)) {
+        status = FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED;
+        return;
+    }
+    offline_quit_pending = false;
+    uint16_t ime = read_reg(REG_IME_OFFSET);
+    write_reg(REG_IME_OFFSET, 0);
+    write_reg(REG_IE_OFFSET, read_reg(REG_IE_OFFSET) & (uint16_t)~(0x40 | SERIAL_IRQ));
+    write_reg(REG_IF_OFFSET, read_reg(REG_IF_OFFSET) & (uint16_t)~(0x40 | SERIAL_IRQ));
+    write_reg(REG_TM3CNT_H_OFFSET, 0);
+    write_reg(REG_IME_OFFSET, ime);
 }

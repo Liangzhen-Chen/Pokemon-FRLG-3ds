@@ -3,9 +3,12 @@
 #include <string.h>
 #include "global.h"
 #include "libgcnmultiboot.h"
+#include "link.h"
+#include "main.h"
 #include "frlg_native_multiboot.h"
 
 static _Alignas(8) FrlgGbaMemory memory;
+struct Main gMain;
 
 static uint16_t read_reg(uint32_t offset)
 {
@@ -152,6 +155,69 @@ static void test_transfer(void)
     assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_TRANSFER_UNSUPPORTED);
 }
 
+static void test_serial_boundary(void)
+{
+    struct GcmbStruct mb = {0};
+    GameCubeMultiBoot_Init(&mb);
+    gMain.state = 142;
+    gMain.serialCallback = SerialCB;
+    write_reg(0x200, 0x0041);
+    write_reg(0x134, 0x8000);
+    write_reg(0x140, 0);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    GameCubeMultiBoot_Init(&mb);
+    write_reg(0x200, 0x00c1);
+    GameCubeMultiBoot_Quit();
+    assert((read_reg(0x200) & 0x80) == 0);
+    write_reg(0x10e, 0x0040);
+    write_reg(0x202, 0x00c1);
+    write_reg(0x128, 0xa55a);
+    write_reg(0x12a, 0x1234);
+    write_reg(0x120, 0x5678);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_OK);
+    assert(read_reg(0x200) == 0x0001 && read_reg(0x202) == 0x0001);
+    assert(read_reg(0x10e) == 0 && gMain.serialCallback == SerialCB);
+    assert(read_reg(0x128) == 0xa55a && read_reg(0x12a) == 0x1234);
+    assert(read_reg(0x120) == 0x5678);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+
+    GameCubeMultiBoot_Init(&mb);
+    GameCubeMultiBoot_Quit();
+    SerialCB();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    GameCubeMultiBoot_Init(&mb);
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_OK);
+
+    GameCubeMultiBoot_Quit();
+    gMain.state = 141;
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    GameCubeMultiBoot_Init(&mb);
+    GameCubeMultiBoot_Quit();
+    gMain.state = 142;
+    write_reg(0x200, read_reg(0x200) | 0x80);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    assert(read_reg(0x200) & 0x80);
+    GameCubeMultiBoot_Init(&mb);
+    GameCubeMultiBoot_Quit();
+    gMain.serialCallback = NULL;
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    gMain.serialCallback = SerialCB;
+    GameCubeMultiBoot_Init(&mb);
+    GameCubeMultiBoot_Quit();
+    write_reg(0x10e, 0x0080);
+    ResetSerial();
+    assert(frlg_native_multiboot_status() == FRLG_NATIVE_MULTIBOOT_SERIAL_UNSUPPORTED);
+    assert(read_reg(0x10e) == 0x0080);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -160,6 +226,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[1], "serial")) test_serial();
     else if (!strcmp(argv[1], "execute")) test_execute();
     else if (!strcmp(argv[1], "transfer")) test_transfer();
+    else if (!strcmp(argv[1], "serial-boundary")) test_serial_boundary();
     else assert(0);
     return 0;
 }

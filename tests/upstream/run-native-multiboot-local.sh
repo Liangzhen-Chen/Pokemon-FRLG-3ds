@@ -29,7 +29,7 @@ cc "$@" compat/upstream-full/src/frlg_native_multiboot.c \
     compat/upstream-native/src/frlg_native_io.c compat/src/frlg_gba_memory.c \
     compat/src/frlg_gba_lz77.c tests/upstream/native_multiboot_test.c \
     -o "$test_dir/native_multiboot_test"
-for scenario in normal serial execute transfer; do
+for scenario in normal serial execute transfer serial-boundary; do
     "$test_dir/native_multiboot_test" "$scenario"
 done
 printf '%s\n' 'Native multiboot local host scenarios passed.'
