@@ -19,7 +19,7 @@ static void expect_inactive(void)
     uint16_t copied[160];
     bool active = true;
     memset(copied, 0x5a, sizeof(copied));
-    assert(frlg_native_scanline_copy_frame(copied, &active));
+    assert(frlg_native_scanline_copy_frame(copied, &active) == FRLG_NATIVE_SCANLINE_OK);
     assert(!active && copied[0] == 0x5a5a && copied[159] == 0x5a5a);
 }
 
@@ -44,18 +44,19 @@ int main(int argc, char **argv)
     ScanlineEffect_InitHBlankDmaTransfer();
     assert(gScanlineEffect.srcBuffer == 1);
     assert(REG_BLDY == 0);
-    assert(frlg_native_scanline_copy_frame(copied, &active) && active);
+    assert(frlg_native_scanline_copy_frame(copied, &active) == FRLG_NATIVE_SCANLINE_OK && active);
     for (unsigned int y = 0; y < 160; y++)
         assert(copied[y] == y % 17);
     gScanlineEffectRegBuffers[0][1] = 15;
-    assert(frlg_native_scanline_copy_frame(copied, &active) && active && copied[1] == 1);
+    assert(frlg_native_scanline_copy_frame(copied, &active) == FRLG_NATIVE_SCANLINE_OK &&
+           active && copied[1] == 1);
 
     frlg_native_scanline_begin_frame();
     expect_inactive();
     ScanlineEffect_InitHBlankDmaTransfer();
     assert(gScanlineEffect.srcBuffer == 0);
     assert(REG_BLDY == 16);
-    assert(frlg_native_scanline_copy_frame(copied, &active) && active);
+    assert(frlg_native_scanline_copy_frame(copied, &active) == FRLG_NATIVE_SCANLINE_OK && active);
     for (unsigned int y = 0; y < 160; y++)
         assert(copied[y] == 16 - y % 17);
 
@@ -63,6 +64,8 @@ int main(int argc, char **argv)
     ScanlineEffect_InitHBlankDmaTransfer();
     assert(gScanlineEffect.state == 0);
     expect_inactive();
+    assert(frlg_native_scanline_copy_frame(NULL, &active) == FRLG_NATIVE_SCANLINE_INVALID_ARGUMENT);
+    assert(frlg_native_scanline_copy_frame(copied, NULL) == FRLG_NATIVE_SCANLINE_INVALID_ARGUMENT);
     ScanlineEffect_InitHBlankDmaTransfer();
     expect_inactive();
 
@@ -99,7 +102,7 @@ int main(int argc, char **argv)
         frlg_native_scanline_begin_frame();
         ScanlineEffect_Stop();
         assert(frlg_native_scanline_status() == expected);
-        assert(!frlg_native_scanline_copy_frame(copied, &active));
+        assert(frlg_native_scanline_copy_frame(copied, &active) == expected);
     }
     return 0;
 }

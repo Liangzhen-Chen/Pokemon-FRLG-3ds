@@ -26,14 +26,18 @@ FrlgNativeScanlineStatus frlg_native_scanline_status(void)
     return s_status;
 }
 
-bool frlg_native_scanline_copy_frame(uint16_t out_bldy[160], bool *active)
+FrlgNativeScanlineStatus frlg_native_scanline_copy_frame(uint16_t out_bldy[160], bool *active)
 {
-    if (!out_bldy || !active || s_status != FRLG_NATIVE_SCANLINE_OK)
-        return false;
+    if (active)
+        *active = false;
+    if (s_status != FRLG_NATIVE_SCANLINE_OK)
+        return s_status;
+    if (!out_bldy || !active)
+        return FRLG_NATIVE_SCANLINE_INVALID_ARGUMENT;
     *active = s_published && gScanlineEffect.state == 1;
     if (*active)
         memcpy(out_bldy, s_frame_bldy, sizeof(s_frame_bldy));
-    return true;
+    return FRLG_NATIVE_SCANLINE_OK;
 }
 
 void ScanlineEffect_Stop(void)
