@@ -29,9 +29,35 @@ if ! nm "$test_dir/sound.o" | grep -Eq '[[:space:]][Tt][[:space:]]_?PlaySE$'; th
 fi
 cc "$@" -Wall -Wextra -Werror -c tests/upstream/native_audio_event_test.c -o "$test_dir/test.o"
 cc "$@" -Wall -Wextra -Werror -c compat/upstream-full/src/frlg_native_audio.c -o "$test_dir/audio.o"
+cc "$@" -Wall -Wextra -Werror -c compat/upstream-full/src/frlg_native_music_player.c -o "$test_dir/music_player.o"
+cc "$@" -c "$upstream/src/m4a_tables.c" -o "$test_dir/m4a_tables.o"
 case "$(uname -s)" in
     Darwin) set -- "$@" -Wl,-dead_strip ;;
     *) set -- "$@" -Wl,--gc-sections ;;
 esac
-cc "$@" "$test_dir/sound.o" "$test_dir/test.o" "$test_dir/audio.o" -o "$test_dir/native_audio_event_test"
+cc "$@" "$test_dir/sound.o" "$test_dir/test.o" "$test_dir/audio.o" \
+    "$test_dir/music_player.o" "$test_dir/m4a_tables.o" -o "$test_dir/native_audio_event_test"
 "$test_dir/native_audio_event_test"
+
+python3 scripts/prepare-native-audio.py --upstream "$upstream" --output-dir "$test_dir/assets"
+test -s "$test_dir/assets/objects.txt"
+grep -Fxq 'sound_data.o' "$test_dir/assets/objects.txt"
+arm-none-eabi-nm "$test_dir/assets/sound_data.o" | grep -Eq '[[:space:]][Rr][[:space:]]gSongTable$'
+arm-none-eabi-nm "$test_dir/assets/sound_data.o" | grep -Eq '[[:space:]][Rr][[:space:]]gMPlayTable$'
+arm-none-eabi-nm "$test_dir/assets/sound_data.o" | grep -Eq '[[:space:]][Rr][[:space:]]gCryTable$'
+arm-none-eabi-gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
+    -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft \
+    -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 \
+    -iquote compat/upstream-full/include -iquote compat/upstream-native/include \
+    -iquote compat/include -iquote external/pokefirered/include \
+    -c compat/upstream-full/src/frlg_native_music_player.c -o "$test_dir/assets/music_player.o"
+python3 - "$test_dir/assets" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+
+assets = Path(sys.argv[1])
+objects = [assets / name for name in (assets / "objects.txt").read_text().splitlines()]
+subprocess.run(["arm-none-eabi-ld", "-r", "-o", str(assets / "audio-closure.o"),
+                str(assets / "music_player.o"), *map(str, objects)], check=True)
+PY

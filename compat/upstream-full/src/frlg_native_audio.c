@@ -4,6 +4,7 @@
 #include "main.h"
 #include "m4a.h"
 #include "frlg_native_audio.h"
+#include "frlg_native_music_player.h"
 
 struct SoundInfo gSoundInfo;
 
@@ -29,18 +30,28 @@ const FrlgNativeAudioState *frlg_native_audio_state(void)
     return &sState;
 }
 
+void frlg_native_audio_set_error(FrlgNativeAudioError error)
+{
+    if (sState.error == FRLG_NATIVE_AUDIO_ERROR_NONE)
+        sState.error = error;
+}
+
 void m4aSoundInit(void)
 {
     memset(&gSoundInfo, 0, sizeof(gSoundInfo));
     memset(&sState, 0, sizeof(sState));
     sState.output_status = sOutputStatus;
     sState.initialized = true;
+    frlg_native_music_init();
 }
 
 void m4aSoundMain(void)
 {
     if (audio_ready())
+    {
         sState.sound_main_calls++;
+        frlg_native_music_main();
+    }
 }
 
 void m4aSoundVSync(void)
@@ -61,6 +72,7 @@ void m4aSongNumStart(u16 songNum)
     FrlgNativeAudioRequest *request = &sState.requests[sState.request_count++];
     request->song_id = songNum;
     request->completed_vblanks = gMain.vblankCounter2;
+    frlg_native_music_start(songNum);
 }
 
 void SetPokemonCryStereo(u32 value)
