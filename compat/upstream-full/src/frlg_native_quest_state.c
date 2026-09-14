@@ -1,6 +1,7 @@
 #include "../include/global.h"
 #include "frlg_native_quest_state.h"
 #include "quest_log.h"
+#include <string.h>
 
 u8 gQuestLogState;
 u16 *gQuestLogDefeatedWildMonRecord;
@@ -30,4 +31,15 @@ void QL_AddASLROffset(void *oldSaveBlockPtr)
         gQuestLogDefeatedWildMonRecord = (u16 *)((uintptr_t)gQuestLogDefeatedWildMonRecord
             + (uintptr_t)gSaveBlock1Ptr - (uintptr_t)oldSaveBlockPtr);
     }
+}
+
+void ResetQuestLog(void)
+{
+    if (gQuestLogState != 0)
+        sQuestStatus = FRLG_NATIVE_QUEST_UNSUPPORTED_STATE;
+
+    memset(gSaveBlock1Ptr->questLog, 0, sizeof(gSaveBlock1Ptr->questLog));
+    gQuestLogState = 0;
+    gQuestLogRecordingPointer = NULL;
+    gQuestLogDefeatedWildMonRecord = NULL;
 }

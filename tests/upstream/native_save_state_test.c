@@ -6,6 +6,7 @@
 #include "load_save.h"
 #include "new_game.h"
 #include "pokemon.h"
+#include "constants/items.h"
 
 static alignas(8) unsigned char save1Area[sizeof(struct SaveBlock1) + 128];
 static alignas(8) unsigned char save2Area[sizeof(struct SaveBlock2) + 128];
@@ -82,13 +83,52 @@ static void test_save2_defaults(void)
     assert(save2Area[0] == 0 && save2Area[sizeof(save2Area) - 1] == 0);
 }
 
+static void assert_zero_mon(const struct Pokemon *mon)
+{
+    static const struct BoxPokemon emptyBox;
+
+    assert(memcmp(&mon->box, &emptyBox, sizeof(emptyBox)) == 0);
+    assert(mon->status == 0);
+    assert(mon->level == 0);
+    assert(mon->hp == 0 && mon->maxHP == 0);
+    assert(mon->attack == 0 && mon->defense == 0 && mon->speed == 0);
+    assert(mon->spAttack == 0 && mon->spDefense == 0);
+    assert(mon->mail == MAIL_NONE);
+}
+
+static void test_party_reset(void)
+{
+    struct Pokemon mon;
+
+    memset(&mon, 0xa5, sizeof(mon));
+    ZeroMonData(&mon);
+    assert_zero_mon(&mon);
+
+    memset(gPlayerParty, 0xa5, sizeof(gPlayerParty));
+    memset(gEnemyParty, 0x5a, sizeof(gEnemyParty));
+    gPlayerPartyCount = 4;
+    gEnemyPartyCount = 5;
+    ZeroPlayerPartyMons();
+    ZeroEnemyPartyMons();
+    for (size_t i = 0; i < PARTY_SIZE; ++i)
+    {
+        assert_zero_mon(&gPlayerParty[i]);
+        assert_zero_mon(&gEnemyParty[i]);
+    }
+    assert(gPlayerPartyCount == 4);
+    assert(gEnemyPartyCount == 5);
+}
+
 int main(void)
 {
     _Static_assert(ARRAY_COUNT(gObjectEvents) == OBJECT_EVENTS_COUNT, "object count");
     _Static_assert(ARRAY_COUNT(gPlayerParty) == PARTY_SIZE, "party size");
+    _Static_assert(ARRAY_COUNT(gEnemyParty) == PARTY_SIZE, "enemy party size");
     _Static_assert(sizeof(gPlayerPartyCount) == sizeof(u8), "party count type");
+    _Static_assert(sizeof(gEnemyPartyCount) == sizeof(u8), "enemy party count type");
     test_bag_pockets();
     test_party_and_objects();
     test_save2_defaults();
+    test_party_reset();
     return 0;
 }
