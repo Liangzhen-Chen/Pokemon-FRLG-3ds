@@ -15,4 +15,8 @@ bool frlg_gba_mode0_render_with_bldy(const FrlgGbaMemory *memory,
                                     FrlgRgb8 *output, size_t output_pixels,
                                     const uint16_t bldy_by_line[FRLG_GBA_SCREEN_HEIGHT]);
 
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+void frlg_gba_mode0_reference_shutdown(void);
+#endif
+
 #endif

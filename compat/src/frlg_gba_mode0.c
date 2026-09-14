@@ -10,6 +10,7 @@ typedef struct {
     unsigned int row_map, tile_row, tile_y;
 } BgInfo;
 
+#ifndef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
 static unsigned int background_palette_index(const FrlgGbaMemory *memory,
                                              const BgInfo *background, unsigned int x)
 {
@@ -25,12 +26,14 @@ static unsigned int background_palette_index(const FrlgGbaMemory *memory,
     const unsigned int index = (packed >> ((tx & 1) * 4)) & 15;
     return index ? ((entry >> 12) * 16 + index) : 0;
 }
+#endif
 
 static unsigned int limited_coefficient(unsigned int value)
 {
     return value > 16 ? 16 : value;
 }
 
+#ifndef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
 static uint16_t effect_color(uint16_t first, uint16_t second, unsigned int mode,
                              unsigned int eva, unsigned int evb, unsigned int ey)
 {
@@ -54,6 +57,7 @@ static uint16_t effect_color(uint16_t first, uint16_t second, unsigned int mode,
     }
     return result;
 }
+#endif
 
 static bool obj_size(unsigned int shape, unsigned int size, unsigned int *width, unsigned int *height)
 {
@@ -78,6 +82,7 @@ typedef struct {
     uint8_t draw_width, draw_height;
 } ObjInfo;
 
+#ifndef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
 static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo *objects,
                                       const uint8_t *line_objects, unsigned int line_count,
                                       unsigned int x, unsigned int y,
@@ -131,30 +136,44 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
     }
     return 0;
 }
+#endif
 
-static bool render_mode0(const FrlgGbaMemory *memory,
+typedef struct {
+    bool win0, win1, objwin;
+    unsigned int win_x1[2], win_x2[2], win_y1[2], win_y2[2];
+    unsigned int win_inside[2], win_outside, win_obj;
+    BgInfo backgrounds[4];
+    uint8_t priority_layers[4][4];
+    unsigned int priority_counts[4];
+    ObjInfo objects[128];
+    unsigned int bldcnt, blend_mode, eva, evb, uniform_ey;
+} Mode0Prepared;
+
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+bool frlg_gba_mode0_reference_validated(const FrlgGbaMemory *memory,
+                                        FrlgRgb8 *output, const uint16_t *bldy_by_line);
+#endif
+
+static bool prepare_mode0(const FrlgGbaMemory *memory,
                          const FrlgGbaDisplaySnapshot *display,
                          FrlgRgb8 *output, size_t output_pixels,
-                         const uint16_t *bldy_by_line)
+                         Mode0Prepared *prepared)
 {
-    unsigned int bg, pixel;
-    if (!memory || !display || !output || output_pixels < FRLG_GBA_SCREEN_PIXELS)
+    unsigned int bg;
+    if (!memory || !display || !output || !prepared || output_pixels < FRLG_GBA_SCREEN_PIXELS)
         return false;
     if (display->forced_blank)
-    {
-        for (pixel = 0; pixel < FRLG_GBA_SCREEN_PIXELS; pixel++)
-            output[pixel] = (FrlgRgb8){255, 255, 255};
         return true;
-    }
     if (display->mode != 0)
         return false;
 
     const bool win0 = (display->control & 0x2000) != 0;
     const bool win1 = (display->control & 0x4000) != 0;
     const bool objwin = (display->control & 0x8000) != 0;
-    unsigned int win_x1[2] = {0}, win_x2[2] = {0};
-    unsigned int win_y1[2] = {0}, win_y2[2] = {0};
-    unsigned int win_inside[2] = {0x3f, 0x3f};
+    unsigned int *win_x1 = prepared->win_x1, *win_x2 = prepared->win_x2;
+    unsigned int *win_y1 = prepared->win_y1, *win_y2 = prepared->win_y2;
+    unsigned int *win_inside = prepared->win_inside;
+    win_inside[0] = win_inside[1] = 0x3f;
     unsigned int win_outside = 0x3f, win_obj = 0x3f;
     if (win0 || win1 || objwin)
     {
@@ -197,9 +216,9 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             if (chars + (read16(memory->vram + map + entry * 2) & 1023) * tile_bytes + tile_bytes > 65536)
                 return false;
     }
-    BgInfo backgrounds[4] = {0};
-    uint8_t priority_layers[4][4];
-    unsigned int priority_counts[4] = {0};
+    BgInfo *backgrounds = prepared->backgrounds;
+    uint8_t (*priority_layers)[4] = prepared->priority_layers;
+    unsigned int *priority_counts = prepared->priority_counts;
     for (bg = 0; bg < 4; bg++)
     {
         if (display->control & (0x100u << bg))
@@ -217,7 +236,7 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                                        .row_stride = (control & 0x4000) ? 4096 : 2048};
         }
     }
-    ObjInfo objects[128] = {0};
+    ObjInfo *objects = prepared->objects;
     bool has_semi_obj = false;
     if (display->control & FRLG_GBA_DISPCNT_OBJ)
     {
@@ -267,12 +286,49 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     if (win1 && has_semi_obj &&
         (((win_inside[1] & 0x30) == 0x10) || ((win_outside & 0x30) == 0x10)))
         return false;
-    const unsigned int bldcnt = read16(memory->io + 0x50);
-    const unsigned int mode = (bldcnt >> 6) & 3;
+    prepared->win0 = win0;
+    prepared->win1 = win1;
+    prepared->objwin = objwin;
+    prepared->win_outside = win_outside;
+    prepared->win_obj = win_obj;
+    prepared->bldcnt = read16(memory->io + 0x50);
+    prepared->blend_mode = (prepared->bldcnt >> 6) & 3;
     const unsigned int alpha = read16(memory->io + 0x52);
-    const unsigned int eva = limited_coefficient(alpha & 31);
-    const unsigned int evb = limited_coefficient((alpha >> 8) & 31);
-    const unsigned int uniform_ey = limited_coefficient(read16(memory->io + 0x54) & 31);
+    prepared->eva = limited_coefficient(alpha & 31);
+    prepared->evb = limited_coefficient((alpha >> 8) & 31);
+    prepared->uniform_ey = limited_coefficient(read16(memory->io + 0x54) & 31);
+    return true;
+}
+
+static bool render_mode0(const FrlgGbaMemory *memory,
+                         const FrlgGbaDisplaySnapshot *display,
+                         FrlgRgb8 *output, size_t output_pixels,
+                         const uint16_t *bldy_by_line)
+{
+    Mode0Prepared prepared = {0};
+    if (!prepare_mode0(memory, display, output, output_pixels, &prepared))
+        return false;
+    if (display->forced_blank)
+    {
+        for (unsigned int pixel = 0; pixel < FRLG_GBA_SCREEN_PIXELS; pixel++)
+            output[pixel] = (FrlgRgb8){255, 255, 255};
+        return true;
+    }
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+    return frlg_gba_mode0_reference_validated(memory, output, bldy_by_line);
+#else
+    unsigned int bg;
+    const bool win0 = prepared.win0, win1 = prepared.win1, objwin = prepared.objwin;
+    const unsigned int *win_x1 = prepared.win_x1, *win_x2 = prepared.win_x2;
+    const unsigned int *win_y1 = prepared.win_y1, *win_y2 = prepared.win_y2;
+    const unsigned int *win_inside = prepared.win_inside;
+    const unsigned int win_outside = prepared.win_outside, win_obj = prepared.win_obj;
+    BgInfo *backgrounds = prepared.backgrounds;
+    const uint8_t (*priority_layers)[4] = prepared.priority_layers;
+    const unsigned int *priority_counts = prepared.priority_counts;
+    const ObjInfo *objects = prepared.objects;
+    const unsigned int bldcnt = prepared.bldcnt, mode = prepared.blend_mode;
+    const unsigned int eva = prepared.eva, evb = prepared.evb, uniform_ey = prepared.uniform_ey;
     for (unsigned int y = 0; y < FRLG_GBA_SCREEN_HEIGHT; y++)
     {
     for (bg = 0; bg < 4; bg++)
@@ -381,6 +437,7 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     }
     }
     return true;
+#endif
 }
 
 bool frlg_gba_mode0_render(const FrlgGbaMemory *memory,

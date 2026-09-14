@@ -19,6 +19,11 @@
 static const char sErasedTestMedia[] = "sdmc:/frlg-native/erased-test.sav";
 
 #ifdef FRLG_NATIVE_STARTUP_TRACE
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+#define TRACE_SEQUENCE_LIMIT 32
+#else
+#define TRACE_SEQUENCE_LIMIT 16
+#endif
 static unsigned sTraceSequence;
 static unsigned long long sTraceFrame;
 static bool sTraceFrameValid;
@@ -36,7 +41,7 @@ static bool startup_trace(const char *event, const char *detail)
     if (detail == NULL) {
         if (sTraceTruncated)
             return true;
-        if (sTraceSequence >= 16) {
+        if (sTraceSequence >= TRACE_SEQUENCE_LIMIT) {
             event = "trace-truncated";
             sTraceTruncated = true;
         }
@@ -101,6 +106,9 @@ static int stop_native(const char *message)
             break;
         gspWaitForVBlank();
     }
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+    frlg_gba_mode0_reference_shutdown();
+#endif
     gfxExit();
     return 1;
 }
@@ -219,10 +227,20 @@ int main(int argc, char **argv)
             TRACE_STAGE("first-vblank-returned");
         else if (sTraceFrame == 60 || sTraceFrame == 120)
             TRACE_STAGE("frame-milestone");
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+        else if (sTraceFrame == 862 || sTraceFrame == 960 ||
+                 sTraceFrame == 1800 || sTraceFrame == 1920)
+            TRACE_STAGE("frame-milestone");
+        if (sTraceFrame == 1800 || sTraceFrame == 1920)
+            TRACE_TIMING();
+#endif
 #endif
     }
     TRACE_TIMING();
     TRACE_STAGE("loop-exit");
+#ifdef FRLG_GBA_MODE0_REFERENCE_CANDIDATE
+    frlg_gba_mode0_reference_shutdown();
+#endif
     gfxExit();
     return 0;
 }

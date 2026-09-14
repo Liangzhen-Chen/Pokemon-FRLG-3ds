@@ -11,6 +11,12 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITARM)/3ds_rules
 
+ifeq ($(FRLG_MODE0_REFERENCE_CANDIDATE),1)
+ifneq ($(FRLG_NATIVE_GF)$(FRLG_NATIVE_TRACE),11)
+$(error FRLG_MODE0_REFERENCE_CANDIDATE=1 requires FRLG_NATIVE_GF=1 and FRLG_NATIVE_TRACE=1)
+endif
+endif
+
 #---------------------------------------------------------------------------------
 # TARGET is the name of the output
 # BUILD is the directory where object files & intermediate files will be placed
@@ -44,9 +50,17 @@ BUILD := build-native-gf
 ifeq ($(FRLG_NATIVE_TRACE),1)
 TARGET := frlg-3ds-native-gf-trace
 BUILD := build-native-gf-trace
+ifeq ($(FRLG_MODE0_REFERENCE_CANDIDATE),1)
+TARGET := frlg-3ds-native-gf-reference-candidate
+BUILD := build-native-gf-reference-candidate
+endif
 endif
 SOURCES += ../../compat/upstream-full/src ../../compat/upstream-native/src
 INCLUDES := $(INCLUDES) ../../compat/upstream-native/include
+ifeq ($(FRLG_MODE0_REFERENCE_CANDIDATE),1)
+SOURCES += ../../compat/reference-candidate ../../../../../references/zelda-tmc-3ds/port/ppu/src
+INCLUDES := $(INCLUDES) ../../../../../references/zelda-tmc-3ds/port/ppu/include
+endif
 endif
 ifeq ($(DEV_INPUT),1)
 TARGET := frlg-3ds-p2c3-dev-input
@@ -80,6 +94,9 @@ CFLAGS += -DFRLG_NATIVE_GF -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 -DNDEBUG 
           -iquote $(TOPDIR)/../../external/pokefirered/include
 ifeq ($(FRLG_NATIVE_TRACE),1)
 CFLAGS += -DFRLG_NATIVE_STARTUP_TRACE
+ifeq ($(FRLG_MODE0_REFERENCE_CANDIDATE),1)
+CFLAGS += -DFRLG_GBA_MODE0_REFERENCE_CANDIDATE -DTMC_3DS
+endif
 endif
 endif
 ifeq ($(DEV_INPUT),1)
