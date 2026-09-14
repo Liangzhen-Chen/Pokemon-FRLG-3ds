@@ -28,6 +28,16 @@ NATIVE_READY_BLOCK = (
 )
 RESOURCE_DEFINE = '#define COLOSSEUM_GAME_CODE 0x65366347 // "Gc6e" in ASCII\n'
 RESOURCE_DECLARATION = "extern const u32 gMultiBootProgram_PokemonColosseum_Start[];\n"
+NATIVE_LZ_TABLE = """
+#include "frlg_native_title_assets.h"
+const FrlgNativeLzResource gFrlgIntroLzResources[] = {
+    {(const uint8_t *)sCopyright_Gfx, sizeof(sCopyright_Gfx)},
+    {(const uint8_t *)sCopyright_Map, sizeof(sCopyright_Map)},
+    {(const uint8_t *)sGameFreakText_Gfx, sizeof(sGameFreakText_Gfx)},
+    {(const uint8_t *)sGameFreakLogo_Gfx, sizeof(sGameFreakLogo_Gfx)},
+};
+const size_t gFrlgIntroLzResourceCount = sizeof(gFrlgIntroLzResources) / sizeof(gFrlgIntroLzResources[0]);
+"""
 
 
 def transform(source: str) -> str:
@@ -37,7 +47,7 @@ def transform(source: str) -> str:
         raise ValueError("locked intro Colosseum anchors changed")
     return (source.replace(READY_BLOCK, NATIVE_READY_BLOCK)
             .replace(RESOURCE_DEFINE, "")
-            .replace(RESOURCE_DECLARATION, ""))
+            .replace(RESOURCE_DECLARATION, "") + NATIVE_LZ_TABLE)
 
 
 def main() -> int:

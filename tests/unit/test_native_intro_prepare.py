@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,25 @@ spec.loader.exec_module(module)
 
 
 class NativeIntroPrepareTests(unittest.TestCase):
+    def test_direct_intro_lz_calls_register_real_sources_and_sizes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "native_intro.c"
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(SOURCE), str(output)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            called = set(re.findall(
+                r"LZ77UnComp(?:Vram|Wram)\((s\w+),", SOURCE.read_text()
+            ))
+            registered = set(re.findall(
+                r"\{\(const uint8_t \*\)(s\w+), sizeof\(\1\)\}",
+                output.read_text(),
+            ))
+            self.assertEqual(len(called), 4)
+            self.assertEqual(registered, called)
+
     def test_locked_intro_keeps_offline_path_without_colosseum_resource(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "native_intro.c"

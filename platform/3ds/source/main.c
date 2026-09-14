@@ -13,6 +13,7 @@
 #include "frlg_native_multiboot.h"
 #include "frlg_native_quest_state.h"
 #include "frlg_native_scanline.h"
+#include "frlg_native_title_assets.h"
 #include "frlg_video_3ds.h"
 
 static const char sErasedTestMedia[] = "sdmc:/frlg-native/erased-test.sav";
@@ -92,6 +93,7 @@ int main(int argc, char **argv)
     static FrlgGbaMemory gba_memory;
     static FrlgRgb8 pixels[FRLG_GBA_SCREEN_PIXELS];
     static uint16_t line_bldy[FRLG_GBA_SCREEN_HEIGHT];
+    static FrlgNativeLzResource startup_lz_resources[11];
     PrintConsole bottom;
 
     TRACE_STAGE("main-enter");
@@ -102,6 +104,17 @@ int main(int argc, char **argv)
     if (!frlg_native_io_bind(&gba_memory))
         return stop_native("FireRed memory binding failed.");
     TRACE_STAGE("io-bound");
+    size_t title_count = gFrlgTitleLzResourceCount;
+    size_t intro_count = gFrlgIntroLzResourceCount;
+    if (title_count + intro_count != sizeof(startup_lz_resources) / sizeof(startup_lz_resources[0]))
+        return stop_native("FireRed startup resource count changed.");
+    for (size_t i = 0; i < title_count; i++)
+        startup_lz_resources[i] = gFrlgTitleLzResources[i];
+    for (size_t i = 0; i < intro_count; i++)
+        startup_lz_resources[title_count + i] = gFrlgIntroLzResources[i];
+    if (!frlg_native_lz_resources_bind(startup_lz_resources, title_count + intro_count))
+        return stop_native("FireRed startup resource binding failed.");
+    TRACE_STAGE("resources-bound");
     TRACE_STAGE("native-init-start");
     if (!frlg_native_main_init(sErasedTestMedia))
         return stop_native(frlg_native_flash_last_result() != FRLG_NATIVE_FLASH_OK ?
