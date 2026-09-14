@@ -259,6 +259,11 @@ $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf	:	$(OFILES)
 
+ifeq ($(FRLG_NATIVE_GF),1)
+agb_flash_1m.o: CFLAGS += -include $(TOPDIR)/../../compat/upstream-full/include/global.h
+agb_flash_1m.o: $(TOPDIR)/Makefile
+endif
+
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data
 #---------------------------------------------------------------------------------
