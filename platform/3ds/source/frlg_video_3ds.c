@@ -14,10 +14,21 @@ enum {
 void frlg_video_3ds_blit_centered(const FrlgRgb8 *pixels)
 {
     u8 *framebuffer = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+#ifdef FRLG_NATIVE_GF
+    static u8 *cleared_framebuffer;
+#endif
     int y;
     int x;
 
+#ifdef FRLG_NATIVE_GF
+    if (framebuffer != cleared_framebuffer || pixels == NULL)
+    {
+        memset(framebuffer, 0, TOP_WIDTH * TOP_HEIGHT * TOP_BYTES_PER_PIXEL);
+        cleared_framebuffer = framebuffer;
+    }
+#else
     memset(framebuffer, 0, TOP_WIDTH * TOP_HEIGHT * TOP_BYTES_PER_PIXEL);
+#endif
     if (pixels == NULL)
         return;
 
