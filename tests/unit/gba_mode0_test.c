@@ -48,6 +48,40 @@ static void obj(unsigned int number, uint16_t attr0, uint16_t attr1, uint16_t at
     assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + number * 8 + 4, attr2));
 }
 
+static void run_affine_obj_tests(void)
+{
+    frlg_gba_memory_reset(&memory);
+    for (unsigned int i = 0; i < 128; i++)
+        obj(i, 0x0200, 0, 0);
+    color(0, 0x7c00);
+    color(256 + 16 + 1, 0x001f);
+    color(256 + 16 + 2, 0x03e0);
+    memset(memory.vram + 0x10000 + 128 * 32, 0x11, 64 * 32);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_OBJ | 0x40);
+    obj(0, 0x0324, 0xc1c3, 0x1480);
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 6, 0x0100));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 14, 0));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 22, 0));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 30, 0x0100));
+    render();
+    expect(0, 68, 255, 0, 0); expect(0, 100, 255, 0, 0);
+    expect(35, 100, 0, 0, 255); expect(0, 132, 0, 0, 255);
+
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 6, 0x0080));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 30, 0x0080));
+    render();
+    expect(50, 100, 255, 0, 0); expect(65, 100, 255, 0, 0);
+    expect(66, 100, 255, 0, 0); expect(67, 100, 0, 0, 255);
+
+    memset(memory.vram + 0x10000 + (128 + 4 * 8 + 3) * 32, 0x22, 32);
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 6, 0));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 14, 0x0100));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 22, 0xff00));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 30, 0));
+    render();
+    expect(3, 92, 0, 255, 0); expect(3, 100, 255, 0, 0);
+}
+
 static void run_obj_tests(void)
 {
     frlg_gba_memory_reset(&memory);
@@ -123,7 +157,7 @@ static void run_obj_tests(void)
 
     /* Unsupported enabled OAM never changes any output pixel. */
     obj(0, 0xc000, 0, 4); rejected();
-    obj(0, 0x0100, 0, 4); rejected();
+    obj(0, 0x0100, 0, 4); render();
     obj(0, 0x1000, 0, 4); rejected();
     obj(0, 0x2000, 0, 4); rejected();
     obj(0, 0x0800, 0, 4); render(); expect(20, 60, 0, 0, 255);
@@ -492,6 +526,7 @@ void run_gba_mode0_tests(void)
     render(); expect(0, 0, 255, 255, 255);
     frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_FORCED_BLANK | 3);
     render(); expect(0, 0, 255, 255, 255);
+    run_affine_obj_tests();
     run_obj_tests();
     run_win1_tests();
     run_title_window_tests();

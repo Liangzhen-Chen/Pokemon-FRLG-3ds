@@ -1,5 +1,11 @@
 #include "frlg_gba_mode0.h"
 
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+#include <3ds.h>
+uint64_t frlg_mode0_validation_ticks;
+uint64_t frlg_mode0_pixel_ticks;
+#endif
+
 static uint16_t read16(const uint8_t *bytes)
 {
     return (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
@@ -76,6 +82,7 @@ static bool obj_size(unsigned int shape, unsigned int size, unsigned int *width,
 typedef struct {
     uint16_t attr0, attr1, attr2;
     uint8_t width, height;
+    int16_t pa, pb, pc, pd;
 } ObjInfo;
 
 static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo *objects,
@@ -90,6 +97,9 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
         const unsigned int attr2 = object->attr2;
         const unsigned int width = object->width;
         const unsigned int height = object->height;
+        const bool affine = (attr0 & 0x100) != 0;
+        const unsigned int draw_width = width * (affine && (attr0 & 0x200) ? 2 : 1);
+        const unsigned int draw_height = height * (affine && (attr0 & 0x200) ? 2 : 1);
         int ox = attr1 & 511;
         int oy = attr0 & 255;
         if (!width || (((attr0 & 0x0c00) == 0x0800) != window_only))
@@ -98,18 +108,30 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
             ox -= 512;
         if (oy >= 160)
             oy -= 256;
-        if ((int)x < ox || (int)x >= ox + (int)width ||
-            (int)y < oy || (int)y >= oy + (int)height)
+        if ((int)x < ox || (int)x >= ox + (int)draw_width ||
+            (int)y < oy || (int)y >= oy + (int)draw_height)
             continue;
-        unsigned int tx = (unsigned int)((int)x - ox);
-        unsigned int ty = (unsigned int)((int)y - oy);
-        if (attr1 & 0x1000)
-            tx = width - 1 - tx;
-        if (attr1 & 0x2000)
-            ty = height - 1 - ty;
-        const unsigned int tile = (attr2 & 1023) + (ty / 8) * (width / 8) + tx / 8;
-        const unsigned int packed = memory->vram[0x10000 + tile * 32 + (ty & 7) * 4 + (tx & 7) / 2];
-        const unsigned int index = (packed >> ((tx & 1) * 4)) & 15;
+        int tx = (int)x - ox;
+        int ty = (int)y - oy;
+        if (affine)
+        {
+            const int dx = tx - (int)draw_width / 2;
+            const int dy = ty - (int)draw_height / 2;
+            tx = ((object->pa * dx + object->pb * dy) >> 8) + (int)width / 2;
+            ty = ((object->pc * dx + object->pd * dy) >> 8) + (int)height / 2;
+            if (tx < 0 || tx >= (int)width || ty < 0 || ty >= (int)height)
+                continue;
+        }
+        else
+        {
+            if (attr1 & 0x1000)
+                tx = (int)width - 1 - tx;
+            if (attr1 & 0x2000)
+                ty = (int)height - 1 - ty;
+        }
+        const unsigned int tile = (attr2 & 1023) + ((unsigned int)ty / 8) * (width / 8) + (unsigned int)tx / 8;
+        const unsigned int packed = memory->vram[0x10000 + tile * 32 + ((unsigned int)ty & 7) * 4 + ((unsigned int)tx & 7) / 2];
+        const unsigned int index = (packed >> (((unsigned int)tx & 1) * 4)) & 15;
         if (index)
         {
             *priority = (attr2 >> 10) & 3;
@@ -125,6 +147,9 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                          FrlgRgb8 *output, size_t output_pixels,
                          const uint16_t *bldy_by_line)
 {
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+    uint64_t profile_start = svcGetSystemTick();
+#endif
     unsigned int bg, pixel;
     if (!memory || !display || !output || output_pixels < FRLG_GBA_SCREEN_PIXELS)
         return false;
@@ -200,13 +225,21 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             unsigned int width, height;
             if (!(attr0 & 0x100) && (attr0 & 0x200))
                 continue;
-            if ((attr0 & (0x100 | 0x1000 | 0x2000)) ||
+            if ((attr0 & (0x1000 | 0x2000)) ||
                 (attr0 & 0x0c00) == 0x0c00 ||
                 !obj_size(attr0 >> 14, attr1 >> 14, &width, &height) ||
                 (attr2 & 1023) + width * height / 64 > 1024)
                 return false;
             objects[i] = (ObjInfo){(uint16_t)attr0, (uint16_t)attr1, (uint16_t)attr2,
-                                   (uint8_t)width, (uint8_t)height};
+                                   (uint8_t)width, (uint8_t)height, 0, 0, 0, 0};
+            if (attr0 & 0x100)
+            {
+                const unsigned int matrix = (attr1 >> 9) & 31;
+                objects[i].pa = (int16_t)read16(memory->oam + (matrix * 4 + 0) * 8 + 6);
+                objects[i].pb = (int16_t)read16(memory->oam + (matrix * 4 + 1) * 8 + 6);
+                objects[i].pc = (int16_t)read16(memory->oam + (matrix * 4 + 2) * 8 + 6);
+                objects[i].pd = (int16_t)read16(memory->oam + (matrix * 4 + 3) * 8 + 6);
+            }
             if ((attr0 & 0x0c00) == 0x0400)
                 has_semi_obj = true;
         }
@@ -216,6 +249,10 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     if (win1 && has_semi_obj &&
         (((win_inside[1] & 0x30) == 0x10) || ((win_outside & 0x30) == 0x10)))
         return false;
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+    frlg_mode0_validation_ticks += svcGetSystemTick() - profile_start;
+    profile_start = svcGetSystemTick();
+#endif
     const unsigned int bldcnt = read16(memory->io + 0x50);
     const unsigned int mode = (bldcnt >> 6) & 3;
     const unsigned int alpha = read16(memory->io + 0x52);
@@ -304,6 +341,9 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         }
         output[y * FRLG_GBA_SCREEN_WIDTH + x] = frlg_gba_bgr555_to_rgb8(result);
     }
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+    frlg_mode0_pixel_ticks += svcGetSystemTick() - profile_start;
+#endif
     return true;
 }
 
