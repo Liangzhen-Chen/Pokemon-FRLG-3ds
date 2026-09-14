@@ -1,11 +1,5 @@
 #include "frlg_gba_mode0.h"
 
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-#include <3ds.h>
-uint64_t frlg_mode0_validation_ticks;
-uint64_t frlg_mode0_pixel_ticks;
-#endif
-
 static uint16_t read16(const uint8_t *bytes)
 {
     return (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
@@ -86,12 +80,13 @@ typedef struct {
 } ObjInfo;
 
 static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo *objects,
+                                      const uint8_t *line_objects, unsigned int line_count,
                                       unsigned int x, unsigned int y,
                                       unsigned int *priority, bool *semi, bool window_only)
 {
-    for (unsigned int i = 0; i < 128; i++)
+    for (unsigned int i = 0; i < line_count; i++)
     {
-        const ObjInfo *object = objects + i;
+        const ObjInfo *object = objects + line_objects[i];
         const unsigned int attr0 = object->attr0;
         const unsigned int attr1 = object->attr1;
         const unsigned int attr2 = object->attr2;
@@ -147,9 +142,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                          FrlgRgb8 *output, size_t output_pixels,
                          const uint16_t *bldy_by_line)
 {
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-    uint64_t profile_start = svcGetSystemTick();
-#endif
     unsigned int bg, pixel;
     if (!memory || !display || !output || output_pixels < FRLG_GBA_SCREEN_PIXELS)
         return false;
@@ -249,10 +241,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     if (win1 && has_semi_obj &&
         (((win_inside[1] & 0x30) == 0x10) || ((win_outside & 0x30) == 0x10)))
         return false;
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-    frlg_mode0_validation_ticks += svcGetSystemTick() - profile_start;
-    profile_start = svcGetSystemTick();
-#endif
     const unsigned int bldcnt = read16(memory->io + 0x50);
     const unsigned int mode = (bldcnt >> 6) & 3;
     const unsigned int alpha = read16(memory->io + 0x52);
@@ -260,6 +248,25 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     const unsigned int evb = limited_coefficient((alpha >> 8) & 31);
     const unsigned int uniform_ey = limited_coefficient(read16(memory->io + 0x54) & 31);
     for (unsigned int y = 0; y < FRLG_GBA_SCREEN_HEIGHT; y++)
+    {
+    uint8_t line_objects[128];
+    unsigned int line_count = 0;
+    if (display->control & FRLG_GBA_DISPCNT_OBJ)
+    {
+        for (unsigned int i = 0; i < 128; i++)
+        {
+            const ObjInfo *object = objects + i;
+            if (!object->width)
+                continue;
+            int oy = object->attr0 & 255;
+            if (oy >= 160)
+                oy -= 256;
+            const bool affine = (object->attr0 & 0x100) != 0;
+            const unsigned int draw_height = object->height * (affine && (object->attr0 & 0x200) ? 2 : 1);
+            if ((int)y >= oy && (int)y < oy + (int)draw_height)
+                line_objects[line_count++] = (uint8_t)i;
+        }
+    }
     for (unsigned int x = 0; x < FRLG_GBA_SCREEN_WIDTH; x++)
     {
         const unsigned int ey = bldy_by_line ? limited_coefficient(bldy_by_line[y] & 31) : uniform_ey;
@@ -267,11 +274,12 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         if (win0 || win1 || objwin)
         {
             window_mask = win_outside;
-            if (objwin && (display->control & FRLG_GBA_DISPCNT_OBJ))
+            if (objwin && line_count)
             {
                 unsigned int ignored_priority = 0;
                 bool ignored_semi = false;
-                if (obj_palette_index(memory, objects, x, y, &ignored_priority, &ignored_semi, true))
+                if (obj_palette_index(memory, objects, line_objects, line_count,
+                                      x, y, &ignored_priority, &ignored_semi, true))
                     window_mask = win_obj;
             }
             if (win1 && x >= win_x1[1] && x < win_x2[1] &&
@@ -285,9 +293,9 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         unsigned int top_index = 0, second_index = 0;
         unsigned int obj_priority = 0;
         bool obj_semi = false, top_semi = false;
-        const unsigned int obj_index = (display->control & FRLG_GBA_DISPCNT_OBJ) &&
-            (window_mask & 0x10) ?
-            obj_palette_index(memory, objects, x, y, &obj_priority, &obj_semi, false) : 0;
+        const unsigned int obj_index = line_count && (window_mask & 0x10) ?
+            obj_palette_index(memory, objects, line_objects, line_count,
+                              x, y, &obj_priority, &obj_semi, false) : 0;
         for (unsigned int priority = 0; priority < 4; priority++)
         {
             if (obj_index && obj_priority == priority)
@@ -341,9 +349,7 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         }
         output[y * FRLG_GBA_SCREEN_WIDTH + x] = frlg_gba_bgr555_to_rgb8(result);
     }
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-    frlg_mode0_pixel_ticks += svcGetSystemTick() - profile_start;
-#endif
+    }
     return true;
 }
 

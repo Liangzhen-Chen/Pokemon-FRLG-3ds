@@ -80,6 +80,16 @@ static void run_affine_obj_tests(void)
     assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 30, 0));
     render();
     expect(3, 92, 0, 255, 0); expect(3, 100, 255, 0, 0);
+
+    memset(memory.vram + 0x10000 + (128 + 4 * 8 + 7) * 32, 0x22, 32);
+    obj(0, 0x0124, 0xc3c3, 0x1480);
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 38, 0x0100));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 46, 0));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 54, 0));
+    assert(frlg_gba_memory_write16(&memory, FRLG_GBA_OAM_BASE + 62, 0x0100));
+    render();
+    expect(0, 68, 0, 255, 0);
+    expect(3, 68, 0, 0, 255); expect(0, 100, 0, 0, 255);
 }
 
 static void run_obj_tests(void)
