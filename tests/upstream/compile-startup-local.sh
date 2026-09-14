@@ -20,16 +20,36 @@ if [ ! -x "$preproc" ]; then
     exit 2
 fi
 arm_bin="${DEVKITARM:?Set DEVKITARM}/bin"
-test_dir=$(mktemp -d "${TMPDIR:-/tmp}/frlg-startup-compile.XXXXXX")
-trap 'rm -rf "$test_dir"' EXIT HUP INT TERM
-set -- -std=gnu11 -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 \
+if [ -n "${FRLG_NATIVE_OUTPUT_DIR:-}" ]; then
+    mkdir -p "$FRLG_NATIVE_OUTPUT_DIR"
+    test_dir=$(CDPATH= cd -- "$FRLG_NATIVE_OUTPUT_DIR" && pwd)
+else
+    test_dir=$(mktemp -d "${TMPDIR:-/tmp}/frlg-startup-compile.XXXXXX")
+    trap 'rm -rf "$test_dir"' EXIT HUP INT TERM
+fi
+set -- -std=gnu11 -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 -DNDEBUG \
     -iquote "$repo_root/compat/upstream-full/include" \
     -iquote "$repo_root/compat/upstream-native/include" \
     -iquote "$repo_root/compat/include" -iquote "$upstream/include"
+if [ -n "${FRLG_NATIVE_OUTPUT_DIR:-}" ]; then
+    : "${FRLG_NATIVE_GBAGFX:?Set the local locked gbagfx executable for font assets}"
+    mkdir -p "$asset_root/graphics/fonts"
+    for font in down_arrows.4bpp down_arrow_3.4bpp down_arrow_4.4bpp keypad_icons.4bpp \
+        latin_small.hwlatfont latin_normal.fwlatfont latin_male.fwlatfont latin_female.fwlatfont \
+        japanese_small.fwjpnfont japanese_tall.fwjpnfont japanese_normal.fwjpnfont \
+        japanese_male.fwjpnfont japanese_female.fwjpnfont japanese_bold.fwjpnfont braille.fwjpnfont; do
+        stem=${font%.*}
+        "$FRLG_NATIVE_GBAGFX" "$upstream/graphics/fonts/$stem.png" "$asset_root/graphics/fonts/$font"
+    done
+fi
 "$arm_bin/arm-none-eabi-cpp" "$@" "$upstream/src/graphics.c" -o "$test_dir/graphics.i"
 python3 "$repo_root/scripts/select-title-assets.py" "$test_dir/graphics.i" > "$test_dir/title_assets.c"
-for module in sprite intro title_screen new_menu_helpers title_assets; do
+python3 "$repo_root/scripts/prepare-native-intro.py" "$upstream/src/intro.c" "$test_dir/native_intro.c"
+modules='sprite intro title_screen new_menu_helpers title_assets'
+if [ -n "${FRLG_NATIVE_OUTPUT_DIR:-}" ]; then modules="$modules text braille_text"; fi
+for module in $modules; do
     source="$upstream/src/$module.c"
+    if [ "$module" = intro ]; then source="$test_dir/native_intro.c"; fi
     if [ "$module" = title_assets ]; then source="$test_dir/title_assets.c"; fi
     "$arm_bin/arm-none-eabi-cpp" "$@" -Wno-trigraphs "$source" \
         -o "$test_dir/$module.i"
@@ -44,6 +64,18 @@ for module in sprite intro title_screen new_menu_helpers title_assets; do
     fi
     printf '%s\n' "$module: real text/assets preprocessed and ARM11 hard-float object compiled; not linked."
 done
+
+if [ -n "${FRLG_NATIVE_OUTPUT_DIR:-}" ]; then
+    python3 "$repo_root/scripts/prepare-native-bg.py" "$upstream/src/bg.c" > "$test_dir/native_bg.c"
+    "$arm_bin/arm-none-eabi-gcc" "$@" -O2 -fno-strict-aliasing \
+        -ffunction-sections -fdata-sections -march=armv6k -mtune=mpcore -mfloat-abi=hard \
+        -c "$test_dir/native_bg.c" -o "$test_dir/native_bg.o"
+    rm -f "$test_dir/native_save.c"
+    python3 "$repo_root/scripts/prepare-native-save.py" "$upstream/src/save.c" "$test_dir/native_save.c"
+    "$arm_bin/arm-none-eabi-gcc" "$@" -O2 -fno-strict-aliasing \
+        -ffunction-sections -fdata-sections -march=armv6k -mtune=mpcore -mfloat-abi=hard \
+        -c "$test_dir/native_save.c" -o "$test_dir/native_save.o"
+fi
 
 if [ "${FRLG_STARTUP_LINK_AUDIT:-0}" = 1 ]; then
     python3 "$repo_root/scripts/prepare-native-bg.py" "$upstream/src/bg.c" > "$test_dir/bg.c"

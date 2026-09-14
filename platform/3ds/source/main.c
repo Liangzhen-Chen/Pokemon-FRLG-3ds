@@ -1,3 +1,94 @@
+#ifdef FRLG_NATIVE_GF
+#include <3ds.h>
+#include <stdio.h>
+
+#include "frlg_gba_display.h"
+#include "frlg_gba_memory.h"
+#include "frlg_gba_mode0.h"
+#include "frlg_input_3ds.h"
+#include "frlg_native_audio.h"
+#include "frlg_native_flash.h"
+#include "frlg_native_io.h"
+#include "frlg_native_main.h"
+#include "frlg_native_multiboot.h"
+#include "frlg_native_quest_state.h"
+#include "frlg_native_scanline.h"
+#include "frlg_video_3ds.h"
+
+static const char sErasedTestMedia[] = "sdmc:/frlg-native/erased-test.sav";
+
+static int stop_native(const char *message)
+{
+    printf("%s\nPress START to exit.\n", message);
+    gfxFlushBuffers();
+    gfxSwapBuffers();
+    while (aptMainLoop()) {
+        hidScanInput();
+        if (hidKeysDown() & KEY_START)
+            break;
+        gspWaitForVBlank();
+    }
+    gfxExit();
+    return 1;
+}
+
+int main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    static FrlgGbaMemory gba_memory;
+    static FrlgRgb8 pixels[FRLG_GBA_SCREEN_PIXELS];
+    static uint16_t line_bldy[FRLG_GBA_SCREEN_HEIGHT];
+    PrintConsole bottom;
+
+    gfxInitDefault();
+    gfxSetDoubleBuffering(GFX_TOP, false);
+    consoleInit(GFX_BOTTOM, &bottom);
+    if (!frlg_native_io_bind(&gba_memory))
+        return stop_native("FireRed memory binding failed.");
+    if (!frlg_native_main_init(sErasedTestMedia))
+        return stop_native(frlg_native_flash_last_result() != FRLG_NATIVE_FLASH_OK ?
+            "Erased test media missing or invalid." : "FireRed initialization failed.");
+    while (aptMainLoop()) {
+        hidScanInput();
+        if (!frlg_native_main_step(frlg_input_3ds_map(hidKeysHeld())))
+            return stop_native(frlg_native_audio_state()->error != FRLG_NATIVE_AUDIO_ERROR_NONE ?
+                "FireRed audio service failed." :
+                frlg_native_flash_last_result() != FRLG_NATIVE_FLASH_OK ?
+                "FireRed read-only test media rejected a write." :
+                frlg_native_multiboot_status() != FRLG_NATIVE_MULTIBOOT_OK ?
+                "FireRed serial transfer is unsupported." :
+                frlg_native_quest_status() != FRLG_NATIVE_QUEST_OK ?
+                "FireRed quest log state is unsupported." :
+                frlg_native_title_exit_status() == FRLG_NATIVE_TITLE_EXIT_MAIN_MENU ?
+                "FireRed main menu is unsupported." :
+                frlg_native_title_exit_status() == FRLG_NATIVE_TITLE_EXIT_SAVE_CLEAR ?
+                "FireRed save clear screen is unsupported." :
+                frlg_native_title_exit_status() == FRLG_NATIVE_TITLE_EXIT_BERRY_FIX ?
+                "FireRed Berry Fix program is unsupported." :
+                frlg_native_scanline_status() != FRLG_NATIVE_SCANLINE_OK ?
+                "FireRed scanline effect is unsupported." :
+                "FireRed native operation unsupported.");
+        bool scanline_active;
+        if (frlg_native_scanline_copy_frame(line_bldy, &scanline_active) != FRLG_NATIVE_SCANLINE_OK)
+            return stop_native("FireRed scanline effect is unsupported.");
+        FrlgGbaDisplaySnapshot display;
+        if (!frlg_gba_display_snapshot(&gba_memory, &display))
+            return stop_native("FireRed frame rendering failed.");
+        if (!(scanline_active ?
+              frlg_gba_mode0_render_with_bldy(&gba_memory, &display, pixels,
+                                              FRLG_GBA_SCREEN_PIXELS, line_bldy) :
+              frlg_gba_mode0_render(&gba_memory, &display, pixels, FRLG_GBA_SCREEN_PIXELS)))
+            return stop_native("FireRed frame rendering failed.");
+        frlg_video_3ds_blit_centered(pixels);
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+    gfxExit();
+    return 0;
+}
+#else
 /*
  * P2c3 Mode 0 probe written against libctru APIs. Lifecycle, input, and framebuffer patterns
  * were checked against devkitPro/3ds-examples commit
@@ -261,3 +352,4 @@ int main(int argc, char **argv)
     gfxExit();
     return 0;
 }
+#endif

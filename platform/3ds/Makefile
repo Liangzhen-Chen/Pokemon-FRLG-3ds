@@ -38,6 +38,12 @@ BUILD		:=	build
 SOURCES		:=	source ../../compat/src ../../core/src
 DATA		:=	data
 INCLUDES	:=	include ../../compat/include ../../core/include
+ifeq ($(FRLG_NATIVE_GF),1)
+TARGET := frlg-3ds-native-gf
+BUILD := build-native-gf
+SOURCES += ../../compat/upstream-full/src ../../compat/upstream-native/src
+INCLUDES := $(INCLUDES) ../../compat/upstream-native/include
+endif
 ifeq ($(DEV_INPUT),1)
 TARGET := frlg-3ds-p2c3-dev-input
 BUILD := build-dev-input
@@ -63,6 +69,12 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 			$(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -D__3DS__
+ifeq ($(FRLG_NATIVE_GF),1)
+CFLAGS += -DFRLG_NATIVE_GF -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 -DNDEBUG -fno-strict-aliasing -fdata-sections \
+          -iquote $(TOPDIR)/../../compat/upstream-full/include \
+          -iquote $(TOPDIR)/../../compat/upstream-native/include \
+          -iquote $(TOPDIR)/../../external/pokefirered/include
+endif
 ifeq ($(DEV_INPUT),1)
 CFLAGS += -DFRLG_DEV_INPUT
 endif
@@ -71,6 +83,9 @@ CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+ifeq ($(FRLG_NATIVE_GF),1)
+LDFLAGS += -Wl,--gc-sections
+endif
 
 LIBS	:= -lctru -lm
 
@@ -94,10 +109,19 @@ export TOPDIR	:=	$(CURDIR)
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(GRAPHICS),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
+ifeq ($(FRLG_NATIVE_GF),1)
+export VPATH += $(CURDIR)/../../external/pokefirered/src
+endif
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+ifeq ($(FRLG_NATIVE_GF),1)
+CFILES += gpu_regs.c dma3_manager.c task.c malloc.c menu2.c window.c blit.c decompress.c trig.c random.c math_util.c palette.c blend_palette.c \
+          play_time.c sound.c load_save.c text_printer.c agb_flash_1m.c
+export NATIVE_STARTUP_OBJECTS := $(addprefix $(TOPDIR)/$(BUILD)/startup/,sprite.o intro.o title_screen.o new_menu_helpers.o title_assets.o native_bg.o text.o braille_text.o native_save.o)
+export NATIVE_AUDIO_OBJECTS = $(addprefix $(TOPDIR)/$(BUILD)/audio/,$(shell cat $(TOPDIR)/$(BUILD)/audio/objects.txt 2>/dev/null))
+endif
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
@@ -138,7 +162,7 @@ export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
 			$(PICAFILES:.v.pica=.shbin.o) $(SHLISTFILES:.shlist=.shbin.o) \
 			$(addsuffix .o,$(T3XFILES))
 
-export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+export OFILES = $(OFILES_BIN) $(OFILES_SOURCES) $(NATIVE_STARTUP_OBJECTS) $(NATIVE_AUDIO_OBJECTS)
 
 export HFILES	:=	$(PICAFILES:.v.pica=_shbin.h) $(SHLISTFILES:.shlist=_shbin.h) \
 			$(addsuffix .h,$(subst .,_,$(BINFILES))) \
@@ -176,8 +200,28 @@ endif
 .PHONY: all clean
 
 #---------------------------------------------------------------------------------
-all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES)
+all: $(BUILD) $(GFXBUILD) $(DEPSDIR) $(ROMFS_T3XFILES) $(T3XHFILES) $(if $(filter 1,$(FRLG_NATIVE_GF)),native-startup-objects)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+ifeq ($(FRLG_NATIVE_GF),1)
+.PHONY: native-startup-objects
+native-startup-objects: $(BUILD)/preproc $(BUILD)/gbagfx
+	@FRLG_ENABLE_UPSTREAM_LOCAL=1 \
+	  FRLG_NATIVE_PREPROC=$(CURDIR)/$(BUILD)/preproc \
+	  FRLG_NATIVE_GBAGFX=$(CURDIR)/$(BUILD)/gbagfx \
+	  FRLG_NATIVE_ASSET_ROOT=$(if $(FRLG_NATIVE_ASSET_ROOT),$(FRLG_NATIVE_ASSET_ROOT),$(CURDIR)/../../.tools/frlg-startup-assets) \
+	  FRLG_NATIVE_OUTPUT_DIR=$(CURDIR)/$(BUILD)/startup \
+	  sh $(CURDIR)/../../tests/upstream/compile-startup-local.sh
+	@python3 $(CURDIR)/../../scripts/prepare-native-audio.py \
+	  --upstream $(CURDIR)/../../external/pokefirered \
+	  --output-dir $(CURDIR)/$(BUILD)/audio
+
+$(BUILD)/preproc: $(wildcard ../../external/pokefirered/tools/preproc/*.cpp) | $(BUILD)
+	c++ -std=c++11 -O2 -Wall -Wno-switch -Werror $^ -o $@
+
+$(BUILD)/gbagfx: $(wildcard ../../external/pokefirered/tools/gbagfx/*.c) | $(BUILD)
+	cc -Wall -Wextra -Werror -Wno-sign-compare -std=c11 -O3 -DPNG_SKIP_SETJMP_CHECK $^ -o $@ -lpng -lz
+endif
 
 $(BUILD):
 	@mkdir -p $@

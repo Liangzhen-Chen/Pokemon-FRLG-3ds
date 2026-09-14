@@ -1,4 +1,4 @@
-.PHONY: setup download-tools check test test-upstream-local test-native-gpu-local test-native-startup-local build-3ds clean-3ds
+.PHONY: setup download-tools check test test-upstream-local test-native-gpu-local test-native-startup-local build-3ds build-native-gf-3ds clean-3ds
 
 setup:
 	./scripts/bootstrap.sh
@@ -24,7 +24,10 @@ test-native-startup-local:
 	sh ./tests/upstream/compile-startup-local.sh
 
 build-3ds:
-	$(MAKE) -C platform/3ds
+	$(MAKE) -C platform/3ds FRLG_NATIVE_GF=0
+
+build-native-gf-3ds:
+	$(MAKE) -C platform/3ds FRLG_NATIVE_GF=1
 
 clean-3ds:
 	$(MAKE) -C platform/3ds clean
