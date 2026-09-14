@@ -1,40 +1,27 @@
 #include "frlg_gba_mode0.h"
 
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-#include <3ds.h>
-uint64_t frlg_mode0_profile_samples;
-uint64_t frlg_mode0_profile_timer_ticks;
-uint64_t frlg_mode0_profile_window_ticks;
-uint64_t frlg_mode0_profile_obj_ticks;
-uint64_t frlg_mode0_profile_bg_ticks;
-uint64_t frlg_mode0_profile_color_ticks;
-#endif
-
 static uint16_t read16(const uint8_t *bytes)
 {
     return (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
 }
 
+typedef struct {
+    unsigned int control, x_scroll, y_scroll, x_mask, y_mask, map, chars, row_stride;
+    unsigned int row_map, tile_row, tile_y;
+} BgInfo;
+
 static unsigned int background_palette_index(const FrlgGbaMemory *memory,
-                                             const FrlgGbaDisplaySnapshot *display,
-                                             unsigned int layer, unsigned int x, unsigned int y)
+                                             const BgInfo *background, unsigned int x)
 {
-    const unsigned int control = display->background_control[layer];
-    const unsigned int size = control >> 14;
-    const unsigned int width = (size & 1) ? 512 : 256;
-    const unsigned int height = (size & 2) ? 512 : 256;
-    const unsigned int sx = (x + display->background_x[layer]) & (width - 1);
-    const unsigned int sy = (y + display->background_y[layer]) & (height - 1);
-    const unsigned int block = (sy / 256) * (width / 256) + sx / 256;
-    const unsigned int map = ((control >> 8) & 31) * 2048;
-    const unsigned int chars = ((control >> 2) & 3) * 16384;
-    const unsigned int offset = block * 2048 + ((sy / 8 % 32) * 32 + sx / 8 % 32) * 2;
-    const unsigned int entry = read16(memory->vram + map + offset);
+    const unsigned int sx = (x + background->x_scroll) & background->x_mask;
+    const unsigned int offset = background->row_map + (sx / 256) * 2048 +
+                                background->tile_row + (sx / 8 % 32) * 2;
+    const unsigned int entry = read16(memory->vram + offset);
     const unsigned int tx = (sx & 7) ^ ((entry & 0x400) ? 7 : 0);
-    const unsigned int ty = (sy & 7) ^ ((entry & 0x800) ? 7 : 0);
-    if (control & 0x80)
-        return memory->vram[chars + (entry & 1023) * 64 + ty * 8 + tx];
-    const unsigned int packed = memory->vram[chars + (entry & 1023) * 32 + ty * 4 + tx / 2];
+    const unsigned int ty = background->tile_y ^ ((entry & 0x800) ? 7 : 0);
+    if (background->control & 0x80)
+        return memory->vram[background->chars + (entry & 1023) * 64 + ty * 8 + tx];
+    const unsigned int packed = memory->vram[background->chars + (entry & 1023) * 32 + ty * 4 + tx / 2];
     const unsigned int index = (packed >> ((tx & 1) * 4)) & 15;
     return index ? ((entry >> 12) * 16 + index) : 0;
 }
@@ -87,6 +74,8 @@ typedef struct {
     uint16_t attr0, attr1, attr2;
     uint8_t width, height;
     int16_t pa, pb, pc, pd;
+    int16_t ox, oy;
+    uint8_t draw_width, draw_height;
 } ObjInfo;
 
 static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo *objects,
@@ -103,16 +92,12 @@ static unsigned int obj_palette_index(const FrlgGbaMemory *memory, const ObjInfo
         const unsigned int width = object->width;
         const unsigned int height = object->height;
         const bool affine = (attr0 & 0x100) != 0;
-        const unsigned int draw_width = width * (affine && (attr0 & 0x200) ? 2 : 1);
-        const unsigned int draw_height = height * (affine && (attr0 & 0x200) ? 2 : 1);
-        int ox = attr1 & 511;
-        int oy = attr0 & 255;
-        if (!width || (((attr0 & 0x0c00) == 0x0800) != window_only))
+        const unsigned int draw_width = object->draw_width;
+        const unsigned int draw_height = object->draw_height;
+        const int ox = object->ox;
+        const int oy = object->oy;
+        if (((attr0 & 0x0c00) == 0x0800) != window_only)
             continue;
-        if (ox >= 256)
-            ox -= 512;
-        if (oy >= 160)
-            oy -= 256;
         if ((int)x < ox || (int)x >= ox + (int)draw_width ||
             (int)y < oy || (int)y >= oy + (int)draw_height)
             continue;
@@ -212,6 +197,26 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             if (chars + (read16(memory->vram + map + entry * 2) & 1023) * tile_bytes + tile_bytes > 65536)
                 return false;
     }
+    BgInfo backgrounds[4] = {0};
+    uint8_t priority_layers[4][4];
+    unsigned int priority_counts[4] = {0};
+    for (bg = 0; bg < 4; bg++)
+    {
+        if (display->control & (0x100u << bg))
+        {
+            const unsigned int control = display->background_control[bg];
+            const unsigned int priority = control & 3;
+            priority_layers[priority][priority_counts[priority]++] = (uint8_t)bg;
+            backgrounds[bg] = (BgInfo){.control = control,
+                                       .x_scroll = display->background_x[bg],
+                                       .y_scroll = display->background_y[bg],
+                                       .x_mask = (control & 0x4000) ? 511 : 255,
+                                       .y_mask = (control & 0x8000) ? 511 : 255,
+                                       .map = ((control >> 8) & 31) * 2048,
+                                       .chars = ((control >> 2) & 3) * 16384,
+                                       .row_stride = (control & 0x4000) ? 4096 : 2048};
+        }
+    }
     ObjInfo objects[128] = {0};
     bool has_semi_obj = false;
     if (display->control & FRLG_GBA_DISPCNT_OBJ)
@@ -232,8 +237,19 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                 !obj_size(attr0 >> 14, attr1 >> 14, &width, &height) ||
                 (attr2 & 1023) + width * height / 64 > 1024)
                 return false;
-            objects[i] = (ObjInfo){(uint16_t)attr0, (uint16_t)attr1, (uint16_t)attr2,
-                                   (uint8_t)width, (uint8_t)height, 0, 0, 0, 0};
+            int ox = attr1 & 511;
+            int oy = attr0 & 255;
+            if (ox >= 256)
+                ox -= 512;
+            if (oy >= 160)
+                oy -= 256;
+            const bool affine = (attr0 & 0x100) != 0;
+            const unsigned int draw_scale = affine && (attr0 & 0x200) ? 2 : 1;
+            objects[i] = (ObjInfo){.attr0 = (uint16_t)attr0, .attr1 = (uint16_t)attr1,
+                                   .attr2 = (uint16_t)attr2, .width = (uint8_t)width,
+                                   .height = (uint8_t)height, .ox = (int16_t)ox,
+                                   .oy = (int16_t)oy, .draw_width = (uint8_t)(width * draw_scale),
+                                   .draw_height = (uint8_t)(height * draw_scale)};
             if (attr0 & 0x100)
             {
                 const unsigned int matrix = (attr1 >> 9) & 31;
@@ -259,6 +275,16 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     const unsigned int uniform_ey = limited_coefficient(read16(memory->io + 0x54) & 31);
     for (unsigned int y = 0; y < FRLG_GBA_SCREEN_HEIGHT; y++)
     {
+    for (bg = 0; bg < 4; bg++)
+    {
+        if (!(display->control & (0x100u << bg)))
+            continue;
+        BgInfo *background = backgrounds + bg;
+        const unsigned int sy = (y + background->y_scroll) & background->y_mask;
+        background->row_map = background->map + (sy / 256) * background->row_stride;
+        background->tile_row = (sy / 8 % 32) * 64;
+        background->tile_y = sy & 7;
+    }
     uint8_t line_objects[128];
     unsigned int line_count = 0;
     if (display->control & FRLG_GBA_DISPCNT_OBJ)
@@ -268,26 +294,12 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             const ObjInfo *object = objects + i;
             if (!object->width)
                 continue;
-            int oy = object->attr0 & 255;
-            if (oy >= 160)
-                oy -= 256;
-            const bool affine = (object->attr0 & 0x100) != 0;
-            const unsigned int draw_height = object->height * (affine && (object->attr0 & 0x200) ? 2 : 1);
-            if ((int)y >= oy && (int)y < oy + (int)draw_height)
+            if ((int)y >= object->oy && (int)y < object->oy + object->draw_height)
                 line_objects[line_count++] = (uint8_t)i;
         }
     }
     for (unsigned int x = 0; x < FRLG_GBA_SCREEN_WIDTH; x++)
     {
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-        const bool profile_sample = (x & 31u) == 0 && (y & 7u) == 0;
-        uint64_t t0 = 0, t1 = 0, t2 = 0, t3 = 0, t4 = 0, t5 = 0;
-        if (profile_sample)
-        {
-            t0 = svcGetSystemTick();
-            t1 = svcGetSystemTick();
-        }
-#endif
         const unsigned int ey = bldy_by_line ? limited_coefficient(bldy_by_line[y] & 31) : uniform_ey;
         unsigned int window_mask = 0x3f;
         if (win0 || win1 || objwin)
@@ -308,10 +320,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                 y >= win_y1[0] && y < win_y2[0])
                 window_mask = win_inside[0];
         }
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-        if (profile_sample)
-            t2 = svcGetSystemTick();
-#endif
         unsigned int top_layer = 5, second_layer = 5;
         unsigned int top_index = 0, second_index = 0;
         unsigned int obj_priority = 0;
@@ -319,10 +327,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         const unsigned int obj_index = line_count && (window_mask & 0x10) ?
             obj_palette_index(memory, objects, line_objects, line_count,
                               x, y, &obj_priority, &obj_semi, false) : 0;
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-        if (profile_sample)
-            t3 = svcGetSystemTick();
-#endif
         for (unsigned int priority = 0; priority < 4; priority++)
         {
             if (obj_index && obj_priority == priority)
@@ -339,13 +343,12 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                     second_index = obj_index;
                 }
             }
-            for (unsigned int layer = 0; layer < 4; layer++)
+            for (unsigned int candidate = 0; candidate < priority_counts[priority]; candidate++)
             {
-                if (!(window_mask & (1u << layer)) ||
-                    !(display->control & (0x100u << layer)) ||
-                    (display->background_control[layer] & 3) != priority)
+                const unsigned int layer = priority_layers[priority][candidate];
+                if (!(window_mask & (1u << layer)))
                     continue;
-                const unsigned int index = background_palette_index(memory, display, layer, x, y);
+                const unsigned int index = background_palette_index(memory, backgrounds + layer, x);
                 if (!index)
                     continue;
                 if (top_layer == 5)
@@ -362,10 +365,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             if (second_layer != 5)
                 break;
         }
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-        if (profile_sample)
-            t4 = svcGetSystemTick();
-#endif
         const uint16_t top = read16(memory->palette + top_index * 2);
         const uint16_t second = read16(memory->palette + second_index * 2);
         uint16_t result = top;
@@ -379,18 +378,6 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                 result = effect_color(top, 0, mode, eva, evb, ey);
         }
         output[y * FRLG_GBA_SCREEN_WIDTH + x] = frlg_gba_bgr555_to_rgb8(result);
-#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
-        if (profile_sample)
-        {
-            t5 = svcGetSystemTick();
-            frlg_mode0_profile_timer_ticks += t1 - t0;
-            frlg_mode0_profile_window_ticks += t2 - t1;
-            frlg_mode0_profile_obj_ticks += t3 - t2;
-            frlg_mode0_profile_bg_ticks += t4 - t3;
-            frlg_mode0_profile_color_ticks += t5 - t4;
-            frlg_mode0_profile_samples++;
-        }
-#endif
     }
     }
     return true;

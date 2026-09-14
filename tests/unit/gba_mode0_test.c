@@ -92,6 +92,39 @@ static void run_affine_obj_tests(void)
     expect(3, 68, 0, 0, 255); expect(0, 100, 0, 0, 255);
 }
 
+static void run_bg_priority_order_tests(void)
+{
+    frlg_gba_memory_reset(&memory);
+    for (unsigned int i = 0; i < 128; i++)
+        obj(i, 0x0200, 0, 0);
+    color(1, 0x001f); color(2, 0x03e0); color(256 + 1, 0x7c00);
+    memset(memory.vram + 32, 0x11, 32);
+    memset(memory.vram + 16384 + 32, 0x22, 32);
+    memset(memory.vram + 0x10000 + 32, 0x11, 32);
+    entry(16, 0, 1); entry(16, 1, 1);
+    entry(20, 0, 1); entry(20, 1, 1);
+    frlg_gba_display_set_background_control(&memory, 0, 16 << 8);
+    frlg_gba_display_set_background_control(&memory, 1, (20 << 8) | 4);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 |
+                                                 FRLG_GBA_DISPCNT_OBJ | 0x40);
+    obj(0, 0, 0, 1);
+    render(); expect(0, 0, 0, 0, 255);
+    obj(0, 0x0200, 0, 0);
+    render(); expect(0, 0, 255, 0, 0);
+
+    obj(0, 0x0400, 0, 1);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x52, 0x0808);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x50, 0x0100);
+    render(); expect(0, 0, 123, 0, 123);
+
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 | FRLG_GBA_DISPCNT_BG1 | 0x2000);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x40, 0x0008);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x44, 0x0008);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x48, 0x0002);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x0003);
+    render(); expect(0, 0, 0, 255, 0); expect(8, 0, 255, 0, 0);
+}
+
 static void run_obj_tests(void)
 {
     frlg_gba_memory_reset(&memory);
@@ -537,6 +570,7 @@ void run_gba_mode0_tests(void)
     frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_FORCED_BLANK | 3);
     render(); expect(0, 0, 255, 255, 255);
     run_affine_obj_tests();
+    run_bg_priority_order_tests();
     run_obj_tests();
     run_win1_tests();
     run_title_window_tests();
