@@ -16,7 +16,7 @@ spec.loader.exec_module(module)
 
 
 class NativeIntroPrepareTests(unittest.TestCase):
-    def test_direct_intro_lz_calls_register_real_sources_and_sizes(self):
+    def test_intro_lz_calls_register_real_sources_and_sizes(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "native_intro.c"
             result = subprocess.run(
@@ -25,14 +25,28 @@ class NativeIntroPrepareTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            called = set(re.findall(
-                r"LZ77UnComp(?:Vram|Wram)\((s\w+),", SOURCE.read_text()
+            source = SOURCE.read_text()
+            direct = set(re.findall(
+                r"LZ77UnComp(?:Vram|Wram)\((s\w+),", source
             ))
+            background = set(re.findall(
+                r"DecompressAndCopyTileDataToVram\([^,]+,\s*(s\w+),", source
+            ))
+            sheets = set()
+            for name in ("sSpriteSheets_GameFreakScene", "sFightSceneSpriteSheets"):
+                table = re.search(
+                    rf"static const struct CompressedSpriteSheet {name}\[\] = \{{(.*?)\}};",
+                    source, re.DOTALL,
+                )
+                self.assertIsNotNone(table, name)
+                sheets.update(re.findall(r"\{\s*(s\w+),", table.group(1)))
             registered = set(re.findall(
                 r"\{\(const uint8_t \*\)(s\w+), sizeof\(\1\)\}",
                 output.read_text(),
             ))
-            self.assertEqual(len(called), 4)
+            called = direct | background | sheets
+            self.assertEqual((len(direct), len(background), len(sheets), len(called)),
+                             (4, 18, 12, 33))
             self.assertEqual(registered, called)
 
     def test_locked_intro_keeps_offline_path_without_colosseum_resource(self):

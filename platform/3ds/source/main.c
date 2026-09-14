@@ -93,7 +93,7 @@ int main(int argc, char **argv)
     static FrlgGbaMemory gba_memory;
     static FrlgRgb8 pixels[FRLG_GBA_SCREEN_PIXELS];
     static uint16_t line_bldy[FRLG_GBA_SCREEN_HEIGHT];
-    static FrlgNativeLzResource startup_lz_resources[11];
+    static FrlgNativeLzResource startup_lz_resources[45];
     PrintConsole bottom;
 
     TRACE_STAGE("main-enter");
@@ -106,13 +106,16 @@ int main(int argc, char **argv)
     TRACE_STAGE("io-bound");
     size_t title_count = gFrlgTitleLzResourceCount;
     size_t intro_count = gFrlgIntroLzResourceCount;
-    if (title_count + intro_count != sizeof(startup_lz_resources) / sizeof(startup_lz_resources[0]))
+    size_t title_local_count = gFrlgTitleLocalLzResourceCount;
+    if (title_count + intro_count + title_local_count != sizeof(startup_lz_resources) / sizeof(startup_lz_resources[0]))
         return stop_native("FireRed startup resource count changed.");
     for (size_t i = 0; i < title_count; i++)
         startup_lz_resources[i] = gFrlgTitleLzResources[i];
     for (size_t i = 0; i < intro_count; i++)
         startup_lz_resources[title_count + i] = gFrlgIntroLzResources[i];
-    if (!frlg_native_lz_resources_bind(startup_lz_resources, title_count + intro_count))
+    for (size_t i = 0; i < title_local_count; i++)
+        startup_lz_resources[title_count + intro_count + i] = gFrlgTitleLocalLzResources[i];
+    if (!frlg_native_lz_resources_bind(startup_lz_resources, title_count + intro_count + title_local_count))
         return stop_native("FireRed startup resource binding failed.");
     TRACE_STAGE("resources-bound");
     TRACE_STAGE("native-init-start");

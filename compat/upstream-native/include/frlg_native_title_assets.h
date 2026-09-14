@@ -7,4 +7,6 @@ extern const FrlgNativeLzResource gFrlgTitleLzResources[];
 extern const size_t gFrlgTitleLzResourceCount;
 extern const FrlgNativeLzResource gFrlgIntroLzResources[];
 extern const size_t gFrlgIntroLzResourceCount;
+extern const FrlgNativeLzResource gFrlgTitleLocalLzResources[];
+extern const size_t gFrlgTitleLocalLzResourceCount;
 #endif

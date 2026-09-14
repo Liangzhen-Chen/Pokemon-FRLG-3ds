@@ -45,11 +45,13 @@ fi
 "$arm_bin/arm-none-eabi-cpp" "$@" "$upstream/src/graphics.c" -o "$test_dir/graphics.i"
 python3 "$repo_root/scripts/select-title-assets.py" "$test_dir/graphics.i" > "$test_dir/title_assets.c"
 python3 "$repo_root/scripts/prepare-native-intro.py" "$upstream/src/intro.c" "$test_dir/native_intro.c"
+python3 "$repo_root/scripts/prepare-native-title-screen.py" "$upstream/src/title_screen.c" "$test_dir/native_title_screen.c"
 modules='sprite intro title_screen new_menu_helpers title_assets'
 if [ -n "${FRLG_NATIVE_OUTPUT_DIR:-}" ]; then modules="$modules text braille_text"; fi
 for module in $modules; do
     source="$upstream/src/$module.c"
     if [ "$module" = intro ]; then source="$test_dir/native_intro.c"; fi
+    if [ "$module" = title_screen ]; then source="$test_dir/native_title_screen.c"; fi
     if [ "$module" = title_assets ]; then source="$test_dir/title_assets.c"; fi
     "$arm_bin/arm-none-eabi-cpp" "$@" -Wno-trigraphs "$source" \
         -o "$test_dir/$module.i"
