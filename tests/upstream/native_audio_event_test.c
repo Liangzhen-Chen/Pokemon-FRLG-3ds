@@ -72,8 +72,9 @@ const struct MusicPlayer gMPlayTable[] = {
 
 static u8 sTitleTrack[] = {0xB0, 0xB0, 0xB1};
 static u8 sGameFreakTrack[] = {0x81, 0xB1};
-static u8 sPatternTrack[1 + sizeof(uintptr_t) + 2];
-static u8 sPatternBody[] = {0x81, 0xB4};
+static u8 sPatternTrack[] = {0xB3, 0, 0, 0, 0, 0x81, 0xB1, 0x81, 0xB4};
+static u8 sGotoTrack[] = {0x81, 0xB2, 0, 0, 0, 0, 0xC9, 0x81, 0xB1};
+static u8 sRepeatTrack[] = {0x81, 0xB5, 3, 0, 0, 0, 0, 0xB1};
 static struct SongHeader sTitleHeader = {1, 0, 0, 0, NULL, {sTitleTrack}};
 static struct SongHeader sGameFreakHeader = {1, 0, 0, 0, NULL, {sGameFreakTrack}};
 const struct Song gSongTable[MUS_TEACHY_TV_MENU + 1] = {
@@ -94,6 +95,14 @@ static const FrlgNativeAudioState *reset_audio(void)
     assert(strcmp(state->output_status, "audio_output_unsupported") == 0);
     assert(gSoundInfo.pcmDmaCounter == 0);
     return state;
+}
+
+static void set_relative_target(u8 *field, u8 *target)
+{
+    intptr_t displacement = target - field;
+    assert(displacement >= INT32_MIN && displacement <= INT32_MAX);
+    int32_t encoded = displacement;
+    memcpy(field, &encoded, sizeof(encoded));
 }
 
 int main(void)
@@ -224,15 +233,31 @@ int main(void)
     assert(IsBGMStopped());
     assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
 
-    sPatternTrack[0] = 0xB3;
-    uintptr_t pattern = (uintptr_t)sPatternBody;
-    memcpy(&sPatternTrack[1], &pattern, sizeof(pattern));
-    sPatternTrack[1 + sizeof(pattern)] = 0x81;
-    sPatternTrack[2 + sizeof(pattern)] = 0xB1;
+    set_relative_target(&sPatternTrack[1], &sPatternTrack[7]);
     sTitleHeader.part[0] = sPatternTrack;
     state = reset_audio();
     PlayBGM(MUS_TITLE);
     for (unsigned i = 0; i < 5; ++i)
+        m4aSoundMain();
+    assert(IsBGMStopped());
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
+    sTitleHeader.part[0] = sTitleTrack;
+
+    set_relative_target(&sGotoTrack[2], &sGotoTrack[7]);
+    sTitleHeader.part[0] = sGotoTrack;
+    state = reset_audio();
+    PlayBGM(MUS_TITLE);
+    for (unsigned i = 0; i < 5; ++i)
+        m4aSoundMain();
+    assert(IsBGMStopped());
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
+    sTitleHeader.part[0] = sTitleTrack;
+
+    set_relative_target(&sRepeatTrack[3], &sRepeatTrack[0]);
+    sTitleHeader.part[0] = sRepeatTrack;
+    state = reset_audio();
+    PlayBGM(MUS_TITLE);
+    for (unsigned i = 0; i < 7; ++i)
         m4aSoundMain();
     assert(IsBGMStopped());
     assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);

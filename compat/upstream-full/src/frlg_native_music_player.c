@@ -40,12 +40,13 @@ static struct MusicPlayerInfo *const sPlayers[] = {
     &gMPlayInfo_BGM, &gMPlayInfo_SE1, &gMPlayInfo_SE2, &gMPlayInfo_SE3
 };
 
-static uintptr_t read_target(u8 **cursor)
+static u8 *read_target(u8 **cursor)
 {
-    uintptr_t target;
-    memcpy(&target, *cursor, sizeof(target));
-    *cursor += sizeof(target);
-    return target;
+    int32_t displacement;
+    u8 *field = *cursor;
+    memcpy(&displacement, field, sizeof(displacement));
+    *cursor += sizeof(displacement);
+    return (u8 *)((uintptr_t)field + displacement);
 }
 
 static void fail_sequence(void)
@@ -214,7 +215,7 @@ static void track_event(struct MusicPlayerInfo *info, struct MusicPlayerTrack *t
             track->flags = 0;
             break;
         case 0xB2: /* GOTO */
-            cursor = (u8 *)read_target(&cursor);
+            cursor = read_target(&cursor);
             break;
         case 0xB3: /* PATT */
             if (track->patternLevel == ARRAY_COUNT(track->patternStack))
@@ -222,8 +223,8 @@ static void track_event(struct MusicPlayerInfo *info, struct MusicPlayerTrack *t
                 fail_sequence();
                 return;
             }
-            track->patternStack[track->patternLevel++] = cursor + sizeof(uintptr_t);
-            cursor = (u8 *)read_target(&cursor);
+            track->patternStack[track->patternLevel++] = cursor + sizeof(int32_t);
+            cursor = read_target(&cursor);
             break;
         case 0xB4: /* PEND */
             if (track->patternLevel)
@@ -233,12 +234,12 @@ static void track_event(struct MusicPlayerInfo *info, struct MusicPlayerTrack *t
             if (*cursor == 0 || ++track->repN < *cursor)
             {
                 cursor++;
-                cursor = (u8 *)read_target(&cursor);
+                cursor = read_target(&cursor);
             }
             else
             {
                 track->repN = 0;
-                cursor += 1 + sizeof(uintptr_t);
+                cursor += 1 + sizeof(int32_t);
             }
             break;
         case 0xBA: /* PRIO */

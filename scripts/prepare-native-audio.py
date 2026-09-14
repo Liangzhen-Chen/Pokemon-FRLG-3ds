@@ -3,6 +3,7 @@
 
 import argparse
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -12,6 +13,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_KEY = "external/pokefirered"
 MIDI_SOURCE = Path("sound/songs/midi")
+TRACK_TARGET = re.compile(r"^\s*\.byte\s+(?:GOTO|PATT|REPT)\b")
+TARGET_WORD = re.compile(r"^\s*\.word\s+([A-Za-z_][A-Za-z_0-9]*)\s*(?:@.*)?$")
 
 
 def run(args, *, cwd=None):
@@ -31,6 +34,26 @@ def locked_upstream(path):
     ).strip()
     if actual != expected or dirty:
         raise ValueError("FireRed upstream must match its locked, unmodified revision")
+
+
+def rewrite_song_targets(path):
+    """Encode local sequence jumps as four relative bytes without ELF relocations."""
+    lines = path.read_text().splitlines(keepends=True)
+    converted = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        converted.append(line)
+        if TRACK_TARGET.match(line):
+            if index + 1 >= len(lines) or (match := TARGET_WORD.match(lines[index + 1])) is None:
+                raise ValueError(f"sequence jump without local target in {path}:{index + 1}")
+            target = match.group(1)
+            converted.append("1:\n")
+            for shift in (0, 8, 16, 24):
+                converted.append(f"\t.byte (({target} - 1b) >> {shift}) & 0xff\n")
+            index += 1
+        index += 1
+    path.write_text("".join(converted))
 
 
 def prepare(upstream, output):
@@ -85,6 +108,7 @@ def prepare(upstream, output):
         if song.name not in options:
             raise ValueError(f"MIDI conversion flags missing for {song.name}")
         run([mid_tool, song, song.with_suffix(".s"), *options[song.name]])
+        rewrite_song_targets(song.with_suffix(".s"))
 
     assembler = "arm-none-eabi-as"
     include_args = ["-mcpu=mpcore", "-I", output, "-I", output / "sound", "-I", upstream]

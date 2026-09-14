@@ -53,11 +53,21 @@ arm-none-eabi-gcc -std=gnu11 -O2 -Wall -Wextra -Werror \
     -c compat/upstream-full/src/frlg_native_music_player.c -o "$test_dir/assets/music_player.o"
 python3 - "$test_dir/assets" <<'PY'
 from pathlib import Path
+import re
 import subprocess
 import sys
 
 assets = Path(sys.argv[1])
 objects = [assets / name for name in (assets / "objects.txt").read_text().splitlines()]
+bad = []
+for obj in objects:
+    relocations = subprocess.check_output(["arm-none-eabi-readelf", "-Wr", str(obj)], text=True)
+    for line in relocations.splitlines():
+        match = re.match(r"\s*([0-9a-fA-F]+)\s+[0-9a-fA-F]+\s+(R_ARM_\S+)", line)
+        if match and (match.group(2) != "R_ARM_ABS32" or int(match.group(1), 16) % 4):
+            bad.append(f"{obj.relative_to(assets)}:{match.group(1)}:{match.group(2)}")
+if bad:
+    raise SystemExit(f"{len(bad)} unsupported ARM relocations; first: {bad[0]}")
 subprocess.run(["arm-none-eabi-ld", "-r", "-o", str(assets / "audio-closure.o"),
                 str(assets / "music_player.o"), *map(str, objects)], check=True)
 PY
