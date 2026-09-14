@@ -17,8 +17,61 @@
 
 static const char sErasedTestMedia[] = "sdmc:/frlg-native/erased-test.sav";
 
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+static unsigned sTraceSequence;
+static unsigned long long sTraceFrame;
+static bool sTraceFrameValid;
+static bool sTraceTruncated;
+
+static bool startup_trace(const char *event, const char *detail)
+{
+    char line[192];
+    int length;
+    if (detail == NULL) {
+        if (sTraceTruncated)
+            return true;
+        if (sTraceSequence >= 16) {
+            event = "trace-truncated";
+            sTraceTruncated = true;
+        }
+    }
+    if (sTraceFrameValid)
+        length = snprintf(line, sizeof(line), "seq=%u frame=%llu event=%s%s%s\n",
+                          sTraceSequence + 1, sTraceFrame, event,
+                          detail ? " detail=" : "", detail ? detail : "");
+    else
+        length = snprintf(line, sizeof(line), "seq=%u frame=- event=%s%s%s\n",
+                          sTraceSequence + 1, event,
+                          detail ? " detail=" : "", detail ? detail : "");
+    if (length <= 0 || (size_t)length >= sizeof(line))
+        return false;
+    FILE *file = fopen("sdmc:/frlg-native/startup.trace", sTraceSequence == 0 ? "wb" : "ab");
+    if (file == NULL)
+        return false;
+    bool written = fwrite(line, 1, (size_t)length, file) == (size_t)length;
+    int closed = fclose(file);
+    if (!written || closed != 0)
+        return false;
+    sTraceSequence++;
+    return true;
+}
+
+__attribute__((noinline)) static int startup_trace_failed(void)
+{
+    svcBreak(USERBREAK_PANIC);
+    return 2;
+}
+
+#define TRACE_STAGE(event) do { if (!startup_trace(event, NULL)) return startup_trace_failed(); } while (0)
+#define TRACE_ERROR(detail) do { if (!startup_trace("error", detail)) return startup_trace_failed(); } while (0)
+#else
+#define TRACE_STAGE(event) ((void)0)
+#define TRACE_ERROR(detail) ((void)0)
+#endif
+
 static int stop_native(const char *message)
 {
+    TRACE_ERROR(message);
     printf("%s\nPress START to exit.\n", message);
     gfxFlushBuffers();
     gfxSwapBuffers();
@@ -41,15 +94,25 @@ int main(int argc, char **argv)
     static uint16_t line_bldy[FRLG_GBA_SCREEN_HEIGHT];
     PrintConsole bottom;
 
+    TRACE_STAGE("main-enter");
     gfxInitDefault();
     gfxSetDoubleBuffering(GFX_TOP, false);
     consoleInit(GFX_BOTTOM, &bottom);
+    TRACE_STAGE("graphics-ready");
     if (!frlg_native_io_bind(&gba_memory))
         return stop_native("FireRed memory binding failed.");
+    TRACE_STAGE("io-bound");
+    TRACE_STAGE("native-init-start");
     if (!frlg_native_main_init(sErasedTestMedia))
         return stop_native(frlg_native_flash_last_result() != FRLG_NATIVE_FLASH_OK ?
             "Erased test media missing or invalid." : "FireRed initialization failed.");
+    TRACE_STAGE("native-init-ok");
     while (aptMainLoop()) {
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        sTraceFrameValid = true;
+        if (sTraceFrame == 0)
+            TRACE_STAGE("first-frame-enter");
+#endif
         hidScanInput();
         if (!frlg_native_main_step(frlg_input_3ds_map(hidKeysHeld())))
             return stop_native(frlg_native_audio_state()->error != FRLG_NATIVE_AUDIO_ERROR_NONE ?
@@ -69,6 +132,10 @@ int main(int argc, char **argv)
                 frlg_native_scanline_status() != FRLG_NATIVE_SCANLINE_OK ?
                 "FireRed scanline effect is unsupported." :
                 "FireRed native operation unsupported.");
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        if (sTraceFrame == 0)
+            TRACE_STAGE("first-frame-step-ok");
+#endif
         bool scanline_active;
         if (frlg_native_scanline_copy_frame(line_bldy, &scanline_active) != FRLG_NATIVE_SCANLINE_OK)
             return stop_native("FireRed scanline effect is unsupported.");
@@ -83,8 +150,16 @@ int main(int argc, char **argv)
         frlg_video_3ds_blit_centered(pixels);
         gfxFlushBuffers();
         gfxSwapBuffers();
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        if (sTraceFrame == 0)
+            TRACE_STAGE("first-frame-submitted");
+#endif
         gspWaitForVBlank();
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        sTraceFrame++;
+#endif
     }
+    TRACE_STAGE("loop-exit");
     gfxExit();
     return 0;
 }

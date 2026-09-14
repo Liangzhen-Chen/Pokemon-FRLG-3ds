@@ -41,6 +41,10 @@ INCLUDES	:=	include ../../compat/include ../../core/include
 ifeq ($(FRLG_NATIVE_GF),1)
 TARGET := frlg-3ds-native-gf
 BUILD := build-native-gf
+ifeq ($(FRLG_NATIVE_TRACE),1)
+TARGET := frlg-3ds-native-gf-trace
+BUILD := build-native-gf-trace
+endif
 SOURCES += ../../compat/upstream-full/src ../../compat/upstream-native/src
 INCLUDES := $(INCLUDES) ../../compat/upstream-native/include
 endif
@@ -74,6 +78,9 @@ CFLAGS += -DFRLG_NATIVE_GF -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 -DNDEBUG 
           -iquote $(TOPDIR)/../../compat/upstream-full/include \
           -iquote $(TOPDIR)/../../compat/upstream-native/include \
           -iquote $(TOPDIR)/../../external/pokefirered/include
+ifeq ($(FRLG_NATIVE_TRACE),1)
+CFLAGS += -DFRLG_NATIVE_STARTUP_TRACE
+endif
 endif
 ifeq ($(DEV_INPUT),1)
 CFLAGS += -DFRLG_DEV_INPUT
