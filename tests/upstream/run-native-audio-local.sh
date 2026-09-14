@@ -22,6 +22,7 @@ python3 scripts/prepare-native-audio.py --upstream "$upstream" --output-dir "$te
 python3 - "$test_dir/assets/songs/mus_intro_fight.o" "$test_dir" <<'PY'
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 
@@ -38,6 +39,27 @@ prefix = section.read_bytes()[start:start + 21]
 if prefix != bytes.fromhex("bc00bd7fc22ccd08120810c10cbf40be44d24f7f83"):
     raise SystemExit("Locked MUS_INTRO_FIGHT track 8 prefix changed")
 (test_dir / "intro_fight_track8.inc").write_text("".join(f"0x{byte:02x}, " for byte in prefix))
+wave = song_object.parent.parent / "sound/direct_sound_samples/cries/nidorino.bin"
+wave_data = wave.read_bytes()
+type_, status, freq, loop_start, size = struct.unpack_from("<HHIII", wave_data)
+if (type_, status, freq, loop_start, size) != (1, 0, 0x00A44000, 0, 5960):
+    raise SystemExit("Locked Nidorino cry wave header changed")
+(test_dir / "nidorino_wave.inc").write_text(
+    ", ".join(str(value) for value in (type_, status, freq, loop_start, size))
+    + ", {" + ", ".join(str(value) for value in wave_data[16:20]) + "}"
+)
+sound_object = song_object.parent.parent / "sound_data.o"
+sound_symbols = subprocess.check_output(["arm-none-eabi-nm", str(sound_object)], text=True)
+cry_table = re.search(r"^([0-9a-fA-F]+)\s+[Rr]\s+gCryTable$", sound_symbols, re.MULTILINE)
+if cry_table is None:
+    raise SystemExit("Locked cry table is missing")
+subprocess.run(["arm-none-eabi-objcopy", "--dump-section", f".rodata={section}", str(sound_object)], check=True)
+tone_offset = int(cry_table.group(1), 16) + 32 * 12
+if section.read_bytes()[tone_offset:tone_offset + 12] != bytes.fromhex("203c000000000000ff00ff00"):
+    raise SystemExit("Locked Nidorino cry tone changed")
+relocations = subprocess.check_output(["arm-none-eabi-readelf", "-Wr", str(sound_object)], text=True)
+if re.search(rf"^{tone_offset + 4:08x}\s+.*\bCry_Nidorino$", relocations, re.MULTILINE) is None:
+    raise SystemExit("Locked Nidorino cry tone does not reference its wave")
 PY
 set -- -std=gnu11 -O2 -fno-strict-aliasing -ffunction-sections -fdata-sections \
     -DFIRERED -DENGLISH -DREVISION=0 -DMODERN=1 \

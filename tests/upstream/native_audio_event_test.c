@@ -8,6 +8,7 @@
 #include "sound.h"
 #include "constants/quest_log.h"
 #include "constants/songs.h"
+#include "constants/sound.h"
 #include "constants/species.h"
 #include "frlg_native_audio.h"
 #include "task.h"
@@ -27,16 +28,22 @@ struct TestWave {
     s8 data[4];
 };
 static struct TestWave sCryWave = {1, 0, 61440, 0, 4, {1, 2, 3, 4}};
-const struct ToneData voicegroup000 = {0};
-struct ToneData gCryTable[6] = {
-    [5] = {0x20, 60, 0, 0, (struct WaveData *)&sCryWave, 255, 0, 255, 0}
+static struct TestWave sNidorinoWave = {
+#include "nidorino_wave.inc"
 };
-struct ToneData gCryTable_Reverse[6];
+const struct ToneData voicegroup000 = {0};
+struct ToneData gCryTable[33] = {
+    [5] = {0x20, 60, 0, 0, (struct WaveData *)&sCryWave, 255, 0, 255, 0},
+    [32] = {0x20, 60, 0, 0, (struct WaveData *)&sNidorinoWave, 255, 0, 255, 0}
+};
+struct ToneData gCryTable_Reverse[33];
 
 u16 SpeciesToCryId(u16 species)
 {
-    assert(species == SPECIES_CHARIZARD - 1);
-    return 5;
+    if (species == SPECIES_CHARIZARD - 1)
+        return 5;
+    assert(species == SPECIES_NIDORINO - 1);
+    return 32;
 }
 
 u8 CreateTask(TaskFunc func, u8 priority)
@@ -232,6 +239,25 @@ int main(void)
     assert(!IsPokemonCryPlaying(gMPlay_PokemonCry));
     assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
     sCryWave.freq = 61440;
+
+    state = reset_audio();
+    PlayCry_ByMode(SPECIES_NIDORINO, 0x3F, CRY_MODE_DOUBLES);
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
+    assert(gPokemonCrySong.length == 20);
+    assert(gPokemonCrySong.releaseValue == 225);
+    m4aSoundMain();
+    assert(IsPokemonCryPlaying(gMPlay_PokemonCry));
+    for (unsigned i = 0; i < 19; ++i)
+        m4aSoundMain();
+    assert(IsPokemonCryPlaying(gMPlay_PokemonCry));
+    m4aSoundMain();
+    assert(IsPokemonCryPlaying(gMPlay_PokemonCry));
+    for (unsigned i = 0; i < 12; ++i)
+        m4aSoundMain();
+    assert(IsPokemonCryPlaying(gMPlay_PokemonCry));
+    m4aSoundMain();
+    assert(!IsPokemonCryPlaying(gMPlay_PokemonCry));
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
 
     state = reset_audio();
     m4aSongNumStart(MUS_INTRO_FIGHT);

@@ -396,9 +396,7 @@ struct MusicPlayerInfo *SetPokemonCryTone(struct ToneData *tone)
     if (tone == NULL || tone->type != 0x20 || tone->key != 60 || tone->wav == NULL ||
         tone->wav->size == 0 || tone->wav->freq == 0 || tone->wav->status != 0 ||
         sCryPitch != 15360 || gPokemonCrySong.trackCount != 1 ||
-        gPokemonCrySong.releaseValue != 0 || gPokemonCrySong.unkCmd0DParam != 0 ||
-        (uint64_t)gPokemonCrySong.length * tone->wav->freq * 10000u <
-            (uint64_t)tone->wav->size * CRY_PITCH_SCALE * LCD_FRAMES_PER_10000_SECONDS)
+        gPokemonCrySong.unkCmd0DParam != 0)
     {
         fail_sequence();
         return NULL;
