@@ -23,6 +23,11 @@ static unsigned sTraceSequence;
 static unsigned long long sTraceFrame;
 static bool sTraceFrameValid;
 static bool sTraceTruncated;
+static unsigned long long sTraceSteps;
+static unsigned long long sTraceStepTicks;
+static unsigned long long sTraceRenderTicks;
+static unsigned long long sTraceSubmitTicks;
+static unsigned long long sTraceVBlankTicks;
 
 static bool startup_trace(const char *event, const char *detail)
 {
@@ -57,6 +62,15 @@ static bool startup_trace(const char *event, const char *detail)
     return true;
 }
 
+static bool startup_trace_timing(void)
+{
+    char detail[144];
+    int length = snprintf(detail, sizeof(detail), "n=%llu/%llu s=%llu r=%llu b=%llu v=%llu",
+                          sTraceSteps, sTraceFrame, sTraceStepTicks, sTraceRenderTicks,
+                          sTraceSubmitTicks, sTraceVBlankTicks);
+    return length > 0 && (size_t)length < sizeof(detail) && startup_trace("timing", detail);
+}
+
 __attribute__((noinline)) static int startup_trace_failed(void)
 {
     svcBreak(USERBREAK_PANIC);
@@ -65,13 +79,18 @@ __attribute__((noinline)) static int startup_trace_failed(void)
 
 #define TRACE_STAGE(event) do { if (!startup_trace(event, NULL)) return startup_trace_failed(); } while (0)
 #define TRACE_ERROR(detail) do { if (!startup_trace("error", detail)) return startup_trace_failed(); } while (0)
+#define TRACE_TIMING() do { if (!startup_trace_timing()) return startup_trace_failed(); } while (0)
+#define TRACE_RENDER_TICKS() (sTraceRenderTicks += svcGetSystemTick() - segment_start)
 #else
 #define TRACE_STAGE(event) ((void)0)
 #define TRACE_ERROR(detail) ((void)0)
+#define TRACE_TIMING() ((void)0)
+#define TRACE_RENDER_TICKS() ((void)0)
 #endif
 
 static int stop_native(const char *message)
 {
+    TRACE_TIMING();
     TRACE_ERROR(message);
     printf("%s\nPress START to exit.\n", message);
     gfxFlushBuffers();
@@ -128,9 +147,18 @@ int main(int argc, char **argv)
         sTraceFrameValid = true;
         if (sTraceFrame == 0)
             TRACE_STAGE("first-frame-enter");
+        unsigned long long segment_start;
 #endif
         hidScanInput();
-        if (!frlg_native_main_step(frlg_input_3ds_map(hidKeysHeld())))
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        segment_start = svcGetSystemTick();
+#endif
+        bool step_ok = frlg_native_main_step(frlg_input_3ds_map(hidKeysHeld()));
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        sTraceStepTicks += svcGetSystemTick() - segment_start;
+        sTraceSteps++;
+#endif
+        if (!step_ok)
             return stop_native(frlg_native_audio_state()->error != FRLG_NATIVE_AUDIO_ERROR_NONE ?
                 "FireRed audio service failed." :
                 frlg_native_flash_last_result() != FRLG_NATIVE_FLASH_OK ?
@@ -151,27 +179,41 @@ int main(int argc, char **argv)
 #ifdef FRLG_NATIVE_STARTUP_TRACE
         if (sTraceFrame == 0)
             TRACE_STAGE("first-frame-step-ok");
+        segment_start = svcGetSystemTick();
 #endif
         bool scanline_active;
-        if (frlg_native_scanline_copy_frame(line_bldy, &scanline_active) != FRLG_NATIVE_SCANLINE_OK)
+        if (frlg_native_scanline_copy_frame(line_bldy, &scanline_active) != FRLG_NATIVE_SCANLINE_OK) {
+            TRACE_RENDER_TICKS();
             return stop_native("FireRed scanline effect is unsupported.");
+        }
         FrlgGbaDisplaySnapshot display;
-        if (!frlg_gba_display_snapshot(&gba_memory, &display))
+        if (!frlg_gba_display_snapshot(&gba_memory, &display)) {
+            TRACE_RENDER_TICKS();
             return stop_native("FireRed frame rendering failed.");
+        }
         if (!(scanline_active ?
               frlg_gba_mode0_render_with_bldy(&gba_memory, &display, pixels,
                                               FRLG_GBA_SCREEN_PIXELS, line_bldy) :
-              frlg_gba_mode0_render(&gba_memory, &display, pixels, FRLG_GBA_SCREEN_PIXELS)))
+              frlg_gba_mode0_render(&gba_memory, &display, pixels, FRLG_GBA_SCREEN_PIXELS))) {
+            TRACE_RENDER_TICKS();
             return stop_native("FireRed frame rendering failed.");
+        }
+        TRACE_RENDER_TICKS();
+#ifdef FRLG_NATIVE_STARTUP_TRACE
+        segment_start = svcGetSystemTick();
+#endif
         frlg_video_3ds_blit_centered(pixels);
         gfxFlushBuffers();
         gfxSwapBuffers();
 #ifdef FRLG_NATIVE_STARTUP_TRACE
+        sTraceSubmitTicks += svcGetSystemTick() - segment_start;
         if (sTraceFrame == 0)
             TRACE_STAGE("first-frame-submitted");
+        segment_start = svcGetSystemTick();
 #endif
         gspWaitForVBlank();
 #ifdef FRLG_NATIVE_STARTUP_TRACE
+        sTraceVBlankTicks += svcGetSystemTick() - segment_start;
         sTraceFrame++;
         if (sTraceFrame == 1)
             TRACE_STAGE("first-vblank-returned");
@@ -179,6 +221,7 @@ int main(int argc, char **argv)
             TRACE_STAGE("frame-milestone");
 #endif
     }
+    TRACE_TIMING();
     TRACE_STAGE("loop-exit");
     gfxExit();
     return 0;
