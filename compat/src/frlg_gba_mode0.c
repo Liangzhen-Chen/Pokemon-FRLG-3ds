@@ -1,5 +1,15 @@
 #include "frlg_gba_mode0.h"
 
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+#include <3ds.h>
+uint64_t frlg_mode0_profile_samples;
+uint64_t frlg_mode0_profile_timer_ticks;
+uint64_t frlg_mode0_profile_window_ticks;
+uint64_t frlg_mode0_profile_obj_ticks;
+uint64_t frlg_mode0_profile_bg_ticks;
+uint64_t frlg_mode0_profile_color_ticks;
+#endif
+
 static uint16_t read16(const uint8_t *bytes)
 {
     return (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
@@ -269,6 +279,17 @@ static bool render_mode0(const FrlgGbaMemory *memory,
     }
     for (unsigned int x = 0; x < FRLG_GBA_SCREEN_WIDTH; x++)
     {
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+        const bool profile_sample = (x & 31u) == 0 && (y & 7u) == 0;
+        uint64_t profile_start = 0;
+        if (profile_sample)
+        {
+            const uint64_t timer_start = svcGetSystemTick();
+            profile_start = svcGetSystemTick();
+            frlg_mode0_profile_timer_ticks += profile_start - timer_start;
+            frlg_mode0_profile_samples++;
+        }
+#endif
         const unsigned int ey = bldy_by_line ? limited_coefficient(bldy_by_line[y] & 31) : uniform_ey;
         unsigned int window_mask = 0x3f;
         if (win0 || win1 || objwin)
@@ -289,6 +310,14 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                 y >= win_y1[0] && y < win_y2[0])
                 window_mask = win_inside[0];
         }
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+        if (profile_sample)
+        {
+            const uint64_t now = svcGetSystemTick();
+            frlg_mode0_profile_window_ticks += now - profile_start;
+            profile_start = now;
+        }
+#endif
         unsigned int top_layer = 5, second_layer = 5;
         unsigned int top_index = 0, second_index = 0;
         unsigned int obj_priority = 0;
@@ -296,6 +325,14 @@ static bool render_mode0(const FrlgGbaMemory *memory,
         const unsigned int obj_index = line_count && (window_mask & 0x10) ?
             obj_palette_index(memory, objects, line_objects, line_count,
                               x, y, &obj_priority, &obj_semi, false) : 0;
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+        if (profile_sample)
+        {
+            const uint64_t now = svcGetSystemTick();
+            frlg_mode0_profile_obj_ticks += now - profile_start;
+            profile_start = now;
+        }
+#endif
         for (unsigned int priority = 0; priority < 4; priority++)
         {
             if (obj_index && obj_priority == priority)
@@ -335,6 +372,14 @@ static bool render_mode0(const FrlgGbaMemory *memory,
             if (second_layer != 5)
                 break;
         }
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+        if (profile_sample)
+        {
+            const uint64_t now = svcGetSystemTick();
+            frlg_mode0_profile_bg_ticks += now - profile_start;
+            profile_start = now;
+        }
+#endif
         const uint16_t top = read16(memory->palette + top_index * 2);
         const uint16_t second = read16(memory->palette + second_index * 2);
         uint16_t result = top;
@@ -348,6 +393,10 @@ static bool render_mode0(const FrlgGbaMemory *memory,
                 result = effect_color(top, 0, mode, eva, evb, ey);
         }
         output[y * FRLG_GBA_SCREEN_WIDTH + x] = frlg_gba_bgr555_to_rgb8(result);
+#if defined(__3DS__) && defined(FRLG_NATIVE_STARTUP_TRACE)
+        if (profile_sample)
+            frlg_mode0_profile_color_ticks += svcGetSystemTick() - profile_start;
+#endif
     }
     }
     return true;
