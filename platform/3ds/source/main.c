@@ -170,6 +170,10 @@ int main(int argc, char **argv)
         gspWaitForVBlank();
 #ifdef FRLG_NATIVE_STARTUP_TRACE
         sTraceFrame++;
+        if (sTraceFrame == 1)
+            TRACE_STAGE("first-vblank-returned");
+        else if (sTraceFrame == 60 || sTraceFrame == 120)
+            TRACE_STAGE("frame-milestone");
 #endif
     }
     TRACE_STAGE("loop-exit");
