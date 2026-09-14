@@ -282,6 +282,14 @@ static void track_event(struct MusicPlayerInfo *info, struct MusicPlayerTrack *t
         case 0xC8: /* TUNE */
             track->tune = *cursor++ - C_V;
             break;
+        case 0xCD: /* XCMD */
+            if (*cursor++ != 0x08) /* xIECV */
+            {
+                fail_sequence();
+                return;
+            }
+            track->pseudoEchoVolume = *cursor++;
+            break;
         case 0xCE: /* EOT */
             if (*cursor < 0x80)
                 cursor++;

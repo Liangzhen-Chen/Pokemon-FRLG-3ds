@@ -75,11 +75,18 @@ static u8 sGameFreakTrack[] = {0x81, 0xB1};
 static u8 sPatternTrack[] = {0xB3, 0, 0, 0, 0, 0x81, 0xB1, 0x81, 0xB4};
 static u8 sGotoTrack[] = {0x81, 0xB2, 0, 0, 0, 0, 0xC9, 0x81, 0xB1};
 static u8 sRepeatTrack[] = {0x81, 0xB5, 3, 0, 0, 0, 0, 0xB1};
+static u8 sIntroFightTrack8[] = {
+#include "intro_fight_track8.inc"
+    0xB1
+};
+static struct ToneData sIntroFightTones[128];
 static struct SongHeader sTitleHeader = {1, 0, 0, 0, NULL, {sTitleTrack}};
 static struct SongHeader sGameFreakHeader = {1, 0, 0, 0, NULL, {sGameFreakTrack}};
+static struct SongHeader sIntroFightTrack8Header = {1, 0, 0, 0, sIntroFightTones, {sIntroFightTrack8}};
 const struct Song gSongTable[MUS_TEACHY_TV_MENU + 1] = {
     [MUS_TITLE] = {&sTitleHeader, 0, 0},
     [MUS_GAME_FREAK] = {&sGameFreakHeader, 0, 0},
+    [MUS_INTRO_FIGHT] = {&sIntroFightTrack8Header, 0, 0},
 };
 
 static const FrlgNativeAudioState *reset_audio(void)
@@ -225,6 +232,13 @@ int main(void)
     assert(!IsPokemonCryPlaying(gMPlay_PokemonCry));
     assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
     sCryWave.freq = 61440;
+
+    state = reset_audio();
+    m4aSongNumStart(MUS_INTRO_FIGHT);
+    m4aSoundMain();
+    assert(state->error == FRLG_NATIVE_AUDIO_ERROR_NONE);
+    assert(gMPlayInfo_BGM.tracks[0].pseudoEchoVolume == 16);
+    assert(gMPlayInfo_BGM.tracks[0].cmdPtr == sIntroFightTrack8 + 21);
 
     state = reset_audio();
     m4aSongNumStart(MUS_GAME_FREAK);
