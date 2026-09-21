@@ -81,13 +81,12 @@ bool frlg_gba_mode0_reference_validated(const FrlgGbaMemory *memory,
     for (unsigned int pixel = 0; pixel < FRLG_GBA_SCREEN_PIXELS; pixel++)
     {
         const uint32_t color = virtuappu_frame_buffer[pixel];
-        const uint8_t red = (uint8_t)(color & 255u) >> 3;
-        const uint8_t green = (uint8_t)((color >> 8) & 255u) >> 3;
-        const uint8_t blue = (uint8_t)((color >> 16) & 255u) >> 3;
+        const uint32_t expanded =
+            (color & 0x00f8f8f8u) | ((color >> 5) & 0x00070707u);
         output[pixel] = (FrlgRgb8){
-            (uint8_t)((red << 3) | (red >> 2)),
-            (uint8_t)((green << 3) | (green >> 2)),
-            (uint8_t)((blue << 3) | (blue >> 2))
+            (uint8_t)expanded,
+            (uint8_t)(expanded >> 8),
+            (uint8_t)(expanded >> 16)
         };
     }
     return true;
