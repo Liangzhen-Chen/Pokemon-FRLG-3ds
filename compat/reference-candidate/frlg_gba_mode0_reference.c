@@ -14,6 +14,81 @@ static uint8_t io_copy[FRLG_GBA_IO_SIZE];
 static uint16_t bg_palette[256], obj_palette[256], oam[512];
 static const uint16_t *active_bldy;
 
+#ifdef VIRTUAPPU_TESTING
+static unsigned int window_normalization_count;
+
+void frlg_gba_mode0_reference_reset_window_normalization_count(void)
+{
+    window_normalization_count = 0;
+}
+
+unsigned int frlg_gba_mode0_reference_get_window_normalization_count(void)
+{
+    return window_normalization_count;
+}
+#endif
+
+static uint16_t read16(const uint8_t *bytes)
+{
+    return (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
+}
+
+static void write16(uint8_t *bytes, uint16_t value)
+{
+    bytes[0] = (uint8_t)value;
+    bytes[1] = (uint8_t)(value >> 8);
+}
+
+static bool objwin_is_horizontally_offscreen(const FrlgGbaMemory *memory, uint16_t dispcnt)
+{
+    static const uint8_t widths[3][4] = {
+        {8, 16, 32, 64}, {16, 32, 32, 64}, {8, 8, 16, 32}
+    };
+    if (!(dispcnt & FRLG_GBA_DISPCNT_OBJ))
+        return true;
+    for (unsigned int i = 0; i < 128; i++)
+    {
+        const uint8_t *entry = memory->oam + i * 8;
+        const uint16_t attr0 = read16(entry);
+        const uint16_t attr1 = read16(entry + 2);
+        const bool affine = (attr0 & 0x0100) != 0;
+        if ((!affine && (attr0 & 0x0200)) || (attr0 & 0x0c00) != 0x0800)
+            continue;
+        const unsigned int shape = attr0 >> 14;
+        if (shape >= 3)
+            continue;
+        int width = widths[shape][attr1 >> 14];
+        if (affine && (attr0 & 0x0200))
+            width *= 2;
+        int x = attr1 & 0x01ff;
+        if (x >= FRLG_GBA_SCREEN_WIDTH)
+            x -= 512;
+        if (x < FRLG_GBA_SCREEN_WIDTH && x + width > 0)
+            return false;
+    }
+    return true;
+}
+
+static void normalize_inert_objwin(const FrlgGbaMemory *memory)
+{
+    const uint16_t dispcnt = read16(io_copy);
+    const uint16_t windows = dispcnt & 0xe000;
+    const uint16_t outside = read16(io_copy + 0x4a) & 0x003f;
+    if (windows != 0x8000 || outside != 0x001f ||
+        !objwin_is_horizontally_offscreen(memory, dispcnt))
+        return;
+
+    /* With no WIN0/WIN1, no OBJ-window object reaching the viewport, and an
+     * outside mask that enables every color layer but disables effects, every
+     * pixel uses the same no-effect controls. Express that equivalent state
+     * directly so the reference renderer can use its direct no-effect path. */
+    write16(io_copy, (uint16_t)(dispcnt & ~0x8000u));
+    write16(io_copy + 0x50, 0);
+#ifdef VIRTUAPPU_TESTING
+    ++window_normalization_count;
+#endif
+}
+
 #ifdef TMC_3DS
 static bool runtime_ready, new3ds, core1_available;
 
@@ -59,6 +134,7 @@ bool frlg_gba_mode0_reference_validated(const FrlgGbaMemory *memory,
     if (!prepare_runtime())
         return false;
     memcpy(io_copy, memory->io, sizeof(io_copy));
+    normalize_inert_objwin(memory);
     memcpy(bg_palette, memory->palette, sizeof(bg_palette));
     memcpy(obj_palette, memory->palette + 512, sizeof(obj_palette));
     memcpy(oam, memory->oam, sizeof(oam));

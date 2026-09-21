@@ -7,6 +7,11 @@ static FrlgGbaMemory memory;
 static FrlgRgb8 pixels[FRLG_GBA_SCREEN_PIXELS + 1];
 static FrlgGbaDisplaySnapshot display;
 
+#if defined(FRLG_GBA_MODE0_REFERENCE_CANDIDATE) && defined(VIRTUAPPU_TESTING)
+void frlg_gba_mode0_reference_reset_window_normalization_count(void);
+unsigned int frlg_gba_mode0_reference_get_window_normalization_count(void);
+#endif
+
 static void render(void)
 {
     assert(frlg_gba_display_snapshot(&memory, &display));
@@ -214,6 +219,67 @@ static void run_obj_tests(void)
     memset(memory.oam, 0, sizeof(memory.oam));
     render(); expect(8, 40, 0, 0, 255);
 }
+
+#if defined(FRLG_GBA_MODE0_REFERENCE_CANDIDATE) && defined(VIRTUAPPU_TESTING)
+static void run_reference_window_normalization_tests(void)
+{
+    frlg_gba_memory_reset(&memory);
+    for (unsigned int i = 0; i < 128; i++)
+        obj(i, 0x0200, 0, 0);
+    color(0, 0x7c00);
+    color(1, 0x001f);
+    memset(memory.vram + 32, 0x11, 32);
+    entry(16, 0, 1);
+    frlg_gba_display_set_background_control(&memory, 0, 16 << 8);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 |
+                                 FRLG_GBA_DISPCNT_OBJ | 0x8040);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x3f1f);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x50, 0x0081);
+    obj(0, 0x0800, 0xc1c0, 1);
+
+    frlg_gba_mode0_reference_reset_window_normalization_count();
+    render();
+    expect(0, 0, 255, 0, 0);
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 1);
+
+    obj(0, 0x0800, 0xc0c0, 1);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 1);
+
+    obj(0, 0x0b00, 0xc1c0, 1);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 1);
+
+    obj(0, 0x0800, 0xc1ff, 1);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 1);
+
+    obj(0, 0x0800, 0xc0f0, 1);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 2);
+
+    obj(0, 0x0a00, 0xc0c0, 1);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 3);
+
+    obj(0, 0x0800, 0xc1c0, 1);
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 |
+                                 FRLG_GBA_DISPCNT_OBJ | 0xa040);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 3);
+
+    frlg_gba_display_set_control(&memory, FRLG_GBA_DISPCNT_BG0 |
+                                 FRLG_GBA_DISPCNT_OBJ | 0x8040);
+    obj(0, 0x0800, 0xc1c0, 1);
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x3f3f);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 3);
+
+    frlg_gba_memory_write16(&memory, FRLG_GBA_IO_BASE + 0x4a, 0x3f1e);
+    render();
+    assert(frlg_gba_mode0_reference_get_window_normalization_count() == 3);
+}
+#endif
 
 static void run_win1_tests(void)
 {
@@ -467,6 +533,10 @@ void run_gba_mode0_tests(void)
     assert(!frlg_gba_mode0_render(&memory, NULL, pixels, FRLG_GBA_SCREEN_PIXELS));
     assert(!frlg_gba_mode0_render(&memory, &display, NULL, FRLG_GBA_SCREEN_PIXELS));
     assert(!frlg_gba_mode0_render(&memory, &display, pixels, FRLG_GBA_SCREEN_PIXELS - 1));
+
+#if defined(FRLG_GBA_MODE0_REFERENCE_CANDIDATE) && defined(VIRTUAPPU_TESTING)
+    run_reference_window_normalization_tests();
+#endif
 
     /* 8bpp: one byte per pixel, 64 bytes per tile, full shared palette.
      * Screen-entry palette-bank bits are ignored, unlike 4bpp. */
