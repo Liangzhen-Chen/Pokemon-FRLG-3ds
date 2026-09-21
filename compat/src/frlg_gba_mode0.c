@@ -212,6 +212,9 @@ static bool prepare_mode0(const FrlgGbaMemory *memory,
             continue;
         if ((control & 0x40) || map + blocks * 2048 > 65536)
             return false;
+        /* Every 10-bit tile index fits when even the last tile stays in VRAM. */
+        if (chars + 1024 * tile_bytes <= 65536)
+            continue;
         for (unsigned int entry = 0; entry < blocks * 1024; entry++)
             if (chars + (read16(memory->vram + map + entry * 2) & 1023) * tile_bytes + tile_bytes > 65536)
                 return false;
