@@ -1,0 +1,19 @@
+diff --git a/port/ppu/src/mode1.c b/port/ppu/src/mode1.c
+index daa07f46e..3ad012407 100644
+--- a/port/ppu/src/mode1.c
++++ b/port/ppu/src/mode1.c
+@@ -3219,10 +3219,13 @@ void virtuappu_mode1_shutdown_workers(void) {
+             continue;
+         __atomic_store_n(&worker->running, false, __ATOMIC_RELEASE);
+         LightEvent_Signal(&worker->start);
+-        threadJoin(worker->thread, 2000000000ULL);
++        if (R_FAILED(threadJoin(worker->thread, 2000000000ULL)))
++            continue;
+         threadFree(worker->thread);
+         worker->thread = NULL;
+     }
++    if (sMode1Workers[0].thread || sMode1Workers[1].thread)
++        return;
+     memset(sMode1Workers, 0, sizeof(sMode1Workers));
+     sMode1WorkersInitialized = false;
+     sMode1StatsFrames = 0;

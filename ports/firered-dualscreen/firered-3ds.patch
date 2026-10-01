@@ -1,0 +1,396 @@
+diff --git a/platform/3ds/CMakeLists.txt b/platform/3ds/CMakeLists.txt
+new file mode 100644
+index 0000000..6563cf4
+--- /dev/null
++++ b/platform/3ds/CMakeLists.txt
+@@ -0,0 +1,93 @@
++cmake_minimum_required(VERSION 3.22)
++project(pokefirered_3ds C ASM)
++
++set(ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
++set(SDL_PREFIX "${ROOT}/../prefix")
++find_program(ARM_NONE_EABI_AS arm-none-eabi-as
++    HINTS "$ENV{ARM_NONE_EABI_TOOLCHAIN}/bin"
++    REQUIRED)
++find_program(ARM_NONE_EABI_LD arm-none-eabi-ld
++    HINTS "$ENV{ARM_NONE_EABI_TOOLCHAIN}/bin"
++    REQUIRED)
++find_program(ARM_NONE_EABI_OBJCOPY arm-none-eabi-objcopy
++    HINTS "$ENV{ARM_NONE_EABI_TOOLCHAIN}/bin"
++    REQUIRED)
++find_package(SDL2 CONFIG REQUIRED PATHS "${SDL_PREFIX}/lib/cmake/SDL2" NO_DEFAULT_PATH)
++
++file(GLOB_RECURSE GAME_C CONFIGURE_DEPENDS
++    "${ROOT}/src/*.c"
++    "${ROOT}/gflib/*.c")
++list(FILTER GAME_C EXCLUDE REGEX "\\.inc\\.c$")
++list(FILTER GAME_C EXCLUDE REGEX "/src/platform/voxel/")
++
++set(GENERATED_C)
++foreach(SOURCE IN LISTS GAME_C)
++    file(RELATIVE_PATH RELATIVE_SOURCE "${ROOT}" "${SOURCE}")
++    set(OUTPUT "${CMAKE_BINARY_DIR}/generated/${RELATIVE_SOURCE}")
++    get_filename_component(OUTPUT_DIR "${OUTPUT}" DIRECTORY)
++    add_custom_command(
++        OUTPUT "${OUTPUT}"
++        COMMAND "${CMAKE_COMMAND}" -E make_directory "${OUTPUT_DIR}"
++        COMMAND /bin/sh -c "cd '${ROOT}' && '${CMAKE_C_COMPILER}' -E -std=gnu99 -iquote'${ROOT}/include' -iquote'${ROOT}/gflib' -I'${SDL_PREFIX}/include' -I'${CTR_ROOT}/include' -D__3DS__ -DNDEBUG -DNONMATCHING -DPORTABLE -DPLATFORM_SDL2 -DRENDERER_EASY_DRAW -DFIRERED=1 -DREVISION=1 -DENGLISH=1 -DMODERN=1 -DUBFIX '${SOURCE}' -o '${OUTPUT}.i' && '${ROOT}/tools/preproc/preproc' '${OUTPUT}.i' '${ROOT}/charmap.txt' > '${OUTPUT}'"
++        DEPENDS "${SOURCE}" "${ROOT}/tools/preproc/preproc" "${ROOT}/charmap.txt"
++        VERBATIM)
++    list(APPEND GENERATED_C "${OUTPUT}")
++endforeach()
++
++file(GLOB DATA_ASM CONFIGURE_DEPENDS "${ROOT}/data/*.s")
++file(GLOB SONG_ASM CONFIGURE_DEPENDS "${ROOT}/sound/songs/*.s" "${ROOT}/sound/songs/midi/*.s")
++set(GENERATED_ASM)
++set(SPECIAL_IDS "${CMAKE_BINARY_DIR}/generated/special_ids.inc")
++add_custom_command(
++    OUTPUT "${SPECIAL_IDS}"
++    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/generated"
++    COMMAND /bin/sh -c "awk '/^[[:space:]]+def_special[[:space:]]/ { printf \".set SPECIAL_%s, %d\\n\", $2, id++ }' '${ROOT}/data/specials.inc' > '${SPECIAL_IDS}'"
++    DEPENDS "${ROOT}/data/specials.inc"
++    VERBATIM)
++foreach(SOURCE IN LISTS DATA_ASM SONG_ASM)
++    file(RELATIVE_PATH RELATIVE_SOURCE "${ROOT}" "${SOURCE}")
++    set(OUTPUT "${CMAKE_BINARY_DIR}/generated/${RELATIVE_SOURCE}.o")
++    get_filename_component(OUTPUT_DIR "${OUTPUT}" DIRECTORY)
++    if(SOURCE MATCHES "/sound/songs/")
++        add_custom_command(
++            OUTPUT "${OUTPUT}"
++            COMMAND "${CMAKE_COMMAND}" -E make_directory "${OUTPUT_DIR}"
++            COMMAND /bin/sh -c "sed -e 's/\\.4byte/\\.word/g;s/\\.2byte/\\.short/g' '${SOURCE}' > '${OUTPUT}.s' && '${ARM_NONE_EABI_AS}' -march=armv6k -I'${ROOT}/sound' -o '${OUTPUT}' '${OUTPUT}.s'"
++            DEPENDS "${SOURCE}"
++            VERBATIM)
++    else()
++        add_custom_command(
++            OUTPUT "${OUTPUT}"
++            COMMAND "${CMAKE_COMMAND}" -E make_directory "${OUTPUT_DIR}"
++        COMMAND /bin/bash -o pipefail -c "cd '${ROOT}' && { printf \".include \\\"${SPECIAL_IDS}\\\"\\n\"; '${ROOT}/tools/preproc/preproc' '${SOURCE}' '${ROOT}/charmap.txt' | /usr/bin/clang -E -x c -I'${ROOT}/include' -DPORTABLE -DUBFIX - | '${ROOT}/tools/preproc/preproc' -ie '${SOURCE}' '${ROOT}/charmap.txt'; } > '${OUTPUT}.s' && '${ARM_NONE_EABI_AS}' -march=armv6k --defsym FIRERED=1 --defsym REVISION=1 --defsym ENGLISH=1 --defsym MODERN=1 -I'${ROOT}' -I'${ROOT}/sound' -o '${OUTPUT}' '${OUTPUT}.s'"
++            DEPENDS "${SOURCE}" "${ROOT}/tools/preproc/preproc" "${ROOT}/charmap.txt" "${SPECIAL_IDS}"
++            VERBATIM)
++    endif()
++    list(APPEND GENERATED_ASM "${OUTPUT}")
++endforeach()
++
++set(GAME_DATA_OBJECT "${CMAKE_BINARY_DIR}/generated/game_data.o")
++add_custom_command(
++    OUTPUT "${GAME_DATA_OBJECT}"
++    COMMAND "${ARM_NONE_EABI_LD}" -r -o "${GAME_DATA_OBJECT}.tmp" ${GENERATED_ASM}
++    COMMAND "${ARM_NONE_EABI_OBJCOPY}" --rename-section .rodata=.data,alloc,load,data,contents "${GAME_DATA_OBJECT}.tmp" "${GAME_DATA_OBJECT}"
++    DEPENDS ${GENERATED_ASM}
++    VERBATIM)
++set_source_files_properties("${GAME_DATA_OBJECT}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
++
++add_executable(firered_3ds ${GENERATED_C} "${GAME_DATA_OBJECT}")
++set_property(TARGET firered_3ds PROPERTY C_STANDARD 99)
++target_include_directories(firered_3ds PRIVATE
++    "${ROOT}"
++    "${ROOT}/sound"
++    "${SDL_PREFIX}/include")
++target_compile_definitions(firered_3ds PRIVATE
++    NONMATCHING PORTABLE PLATFORM_SDL2 RENDERER_EASY_DRAW FIRERED=1 REVISION=1 ENGLISH=1 MODERN=1 UBFIX)
++target_compile_options(firered_3ds PRIVATE
++    -O3
++    -fno-builtin
++    -Wno-implicit-function-declaration
++    -Wno-int-conversion
++    "SHELL:-iquote '${ROOT}/include'"
++    "SHELL:-iquote '${ROOT}/gflib'")
++target_link_libraries(firered_3ds PRIVATE SDL2::SDL2main SDL2::SDL2 m)
+diff --git a/src/load_save.c b/src/load_save.c
+index 8b723dd..098cbf7 100644
+--- a/src/load_save.c
++++ b/src/load_save.c
+@@ -58,12 +58,22 @@ void CheckForFlashMemory(void)
+ 
+ void ClearSav2(void)
+ {
++#ifdef __3DS__
++    CpuFill16(0, &gSaveBlock2, sizeof(gSaveBlock2));
++    CpuFill16(0, gSaveBlock2_DMA, sizeof(gSaveBlock2_DMA));
++#else
+     CpuFill16(0, &gSaveBlock2, sizeof(struct SaveBlock2) + sizeof(gSaveBlock2_DMA));
++#endif
+ }
+ 
+ void ClearSav1(void)
+ {
++#ifdef __3DS__
++    CpuFill16(0, &gSaveBlock1, sizeof(gSaveBlock1));
++    CpuFill16(0, gSaveBlock1_DMA, sizeof(gSaveBlock1_DMA));
++#else
+     CpuFill16(0, &gSaveBlock1, sizeof(struct SaveBlock1) + sizeof(gSaveBlock1_DMA));
++#endif
+ }
+ 
+ void SetSaveBlocksPointers(void)
+@@ -73,6 +83,10 @@ void SetSaveBlocksPointers(void)
+     void *oldSave = (void *)gSaveBlock1Ptr;
+ 
+     offset = (Random()) & ((SAVEBLOCK_MOVE_RANGE - 1) & ~3);
++#ifdef __3DS__
++    // The 3DS linker does not place the padding arrays after the save blocks.
++    offset = 0;
++#endif
+ 
+     gSaveBlock2Ptr = (void *)(&gSaveBlock2) + offset;
+     *sav1_LocalVar = (void *)(&gSaveBlock1) + offset;
+diff --git a/src/platform/sdl2.c b/src/platform/sdl2.c
+index e2a556c..6dabf1b 100644
+--- a/src/platform/sdl2.c
++++ b/src/platform/sdl2.c
+@@ -20,6 +20,9 @@
+ #else
+ #include <SDL2/SDL.h>
+ #endif
++#ifdef __3DS__
++#include <3ds.h>
++#endif
+ #ifdef NATIVE_LINUX
+ #include <SDL2/SDL_image.h>
+ #endif
+@@ -72,8 +75,13 @@ static u32 ConvertBcdToBinary(u8 bcd)
+ }
+ 
+ static FILE *sSaveFile = NULL;
++#ifdef __3DS__
++static char sSavePath[1024];
++static char sConfigPath[1024];
++#else
+ static char sSavePath[1024] = "pokeemerald.sav";
+ static char sConfigPath[1024] = "pokeemerald.cfg";
++#endif
+ static u8 sBorderBackground;
+ static bool sHasBorderBackgroundConfig;
+ static u8 sBackgroundOrderVersion;
+@@ -112,8 +120,8 @@ int DoMain(void *param);
+ void ProcessEvents(void);
+ void VDraw(SDL_Texture *texture);
+ 
+-static void ReadSaveFile(const char *path);
+-static void ReadConfigFile(void);
++static bool ReadSaveFile(const char *path);
++static bool ReadConfigFile(void);
+ static void StoreConfigFile(void);
+ static void ApplyDisplayMode(void);
+ static void ApplyPlatformSettings(void);
+@@ -207,8 +215,30 @@ int main(int argc, char **argv)
+         SDL_free(prefPath);
+     }
+ #endif
+-    ReadSaveFile(sSavePath);
+-    ReadConfigFile();
++#ifdef __3DS__
++    char *prefPath = SDL_GetPrefPath("venom13", "pokefirered-dualscreen-3ds");
++    if (prefPath == NULL)
++    {
++        SDL_Log("Unable to create 3DS save directory: %s", SDL_GetError());
++        SDL_Quit();
++        return 1;
++    }
++    int savePathLength = SDL_snprintf(sSavePath, sizeof(sSavePath), "%spokefirered.sav", prefPath);
++    int configPathLength = SDL_snprintf(sConfigPath, sizeof(sConfigPath), "%spokefirered.cfg", prefPath);
++    SDL_free(prefPath);
++    if (savePathLength < 0 || savePathLength >= (int)sizeof(sSavePath)
++        || configPathLength < 0 || configPathLength >= (int)sizeof(sConfigPath))
++    {
++        SDL_Log("3DS save path is too long");
++        SDL_Quit();
++        return 1;
++    }
++#endif
++    if (!ReadSaveFile(sSavePath) || !ReadConfigFile())
++    {
++        SDL_Quit();
++        return 1;
++    }
+ #ifdef __ANDROID__
+     gVoxelModeEnabled = sPlatformSettings[PLATFORM_SETTING_VOXEL_RENDERER] != 0;
+ #endif
+@@ -230,6 +260,7 @@ int main(int argc, char **argv)
+     sdlWindow = SDL_CreateWindow("Pokemon Emerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, windowFlags);
+ #else
+     Uint32 androidWindowFlags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
++#ifdef VOXEL_CAPABLE
+     if (gVoxelModeEnabled)
+     {
+         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+@@ -239,6 +270,7 @@ int main(int argc, char **argv)
+         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+         androidWindowFlags |= SDL_WINDOW_OPENGL;
+     }
++#endif
+     sdlWindow = SDL_CreateWindow("pokeemerald", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, DISPLAY_WIDTH * videoScale, DISPLAY_HEIGHT * videoScale, androidWindowFlags);
+ #endif
+     if (sdlWindow == NULL)
+@@ -610,6 +642,12 @@ int main(int argc, char **argv)
+ 
+                     accumulator -= dt;
+                 }
++#ifdef __3DS__
++                else
++                {
++                    SDL_Delay(1);
++                }
++#endif
+             }
+         }
+ 
+@@ -754,10 +792,45 @@ static FILE *ReclaimSaveFile(const char *path)
+ }
+ #endif
+ 
+-static void ReadSaveFile(const char *path)
++static bool ReadSaveFile(const char *path)
+ {
+     // Check whether the saveFile exists, and create it if not
+     sSaveFile = fopen(path, "r+b");
++#ifdef __3DS__
++    if (sSaveFile == NULL && errno != ENOENT)
++    {
++        SDL_Log("Unable to open save file %s: %s", path, strerror(errno));
++        return false;
++    }
++    if (sSaveFile == NULL)
++    {
++        memset(FLASH_BASE, 0xFF, sizeof(FLASH_BASE));
++        // A missing save is valid only if its erased image can be written.
++        return Platform_CommitSaveFile() != FALSE;
++    }
++    if (fseek(sSaveFile, 0, SEEK_END) != 0)
++    {
++        SDL_Log("Unable to seek save file %s: %s", path, strerror(errno));
++        CloseSaveFile();
++        return false;
++    }
++    long fileSize = ftell(sSaveFile);
++    if (fileSize != (long)sizeof(FLASH_BASE) || fseek(sSaveFile, 0, SEEK_SET) != 0)
++    {
++        SDL_Log("Invalid save file size or seek failure: %s (%ld bytes)", path, fileSize);
++        CloseSaveFile();
++        return false;
++    }
++    size_t bytesRead = fread(FLASH_BASE, 1, sizeof(FLASH_BASE), sSaveFile);
++    if (bytesRead != sizeof(FLASH_BASE))
++    {
++        SDL_Log("Unable to read complete save file %s (%zu of %zu bytes)",
++                path, bytesRead, sizeof(FLASH_BASE));
++        CloseSaveFile();
++        return false;
++    }
++    return true;
++#else
+ #ifdef __ANDROID__
+     if (sSaveFile == NULL)
+     {
+@@ -773,7 +846,7 @@ static void ReadSaveFile(const char *path)
+     {
+         memset(FLASH_BASE, 0xFF, sizeof(FLASH_BASE));
+         SDL_Log("Unable to open save file: %s", path);
+-        return;
++        return true;
+     }
+ 
+     fseek(sSaveFile, 0, SEEK_END);
+@@ -791,6 +864,8 @@ static void ReadSaveFile(const char *path)
+     {
+         FLASH_BASE[i] = 0xFF;
+     }
++    return true;
++#endif
+ }
+ 
+ static bool32 BuildStorageFilePath(char *path, size_t capacity, const char *fallback, const char *filename)
+@@ -808,14 +883,23 @@ static bool32 BuildStorageFilePath(char *path, size_t capacity, const char *fall
+     return length >= 0 && length < (int)capacity;
+ }
+ 
+-static void ReadConfigFile(void)
++static bool ReadConfigFile(void)
+ {
+     FILE *configFile = fopen(sConfigPath, "r");
+     char line[64];
+     unsigned int value;
+ 
+     if (configFile == NULL)
+-        return;
++    {
++#ifdef __3DS__
++        if (errno != ENOENT)
++        {
++            SDL_Log("Unable to open settings file %s: %s", sConfigPath, strerror(errno));
++            return false;
++        }
++#endif
++        return true;
++    }
+     while (fgets(line, sizeof(line), configFile) != NULL)
+     {
+         if (sscanf(line, "borderBackground=%u", &value) == 1 && value < 16)
+@@ -866,7 +950,18 @@ static void ReadConfigFile(void)
+         else if (sscanf(line, "battleHints=%u", &value) == 1)
+             sPlatformSettings[PLATFORM_SETTING_BATTLE_HINTS] = value != 0;
+     }
++#ifdef __3DS__
++    bool readError = ferror(configFile) != 0;
++    int closeStatus = fclose(configFile);
++    if (readError || closeStatus != 0)
++    {
++        SDL_Log("Unable to read settings file %s", sConfigPath);
++        return false;
++    }
++#else
+     fclose(configFile);
++#endif
++    return true;
+ }
+ 
+ static void StoreConfigFile(void)
+@@ -882,7 +977,12 @@ static void StoreConfigFile(void)
+     configFile = fopen(configPath, "w");
+ 
+     if (configFile == NULL)
++    {
++#ifdef __3DS__
++        SDL_Log("Unable to write settings file %s: %s", configPath, strerror(errno));
++#endif
+         return;
++    }
+     fprintf(configFile, "borderBackground=%u\n", sBorderBackground);
+     fprintf(configFile, "backgroundOrder=2\n");
+     fprintf(configFile, "fullscreen=%u\n", sPlatformSettings[PLATFORM_SETTING_FULLSCREEN]);
+@@ -899,7 +999,13 @@ static void StoreConfigFile(void)
+     fprintf(configFile, "voxelRenderer=%u\n", sPlatformSettings[PLATFORM_SETTING_VOXEL_RENDERER]);
+     fprintf(configFile, "fastForwardAudio=%u\n", sPlatformSettings[PLATFORM_SETTING_FF_AUDIO]);
+     fprintf(configFile, "battleHints=%u\n", sPlatformSettings[PLATFORM_SETTING_BATTLE_HINTS]);
++#ifdef __3DS__
++    bool writeError = ferror(configFile) != 0 || fflush(configFile) != 0;
++    if (fclose(configFile) != 0 || writeError)
++        SDL_Log("Unable to finish settings file %s", configPath);
++#else
+     fclose(configFile);
++#endif
+ }
+ 
+ // Widescreen stretches the complete GBA frame across the panel. Narrow mode
+@@ -1720,6 +1826,20 @@ u16 Platform_GetKeyInput(void)
+     return gamepadKeys | keyboardKeys | DualScreen_ConsumeVirtualKeys();
+ #elif defined(__ANDROID__)
+     return keyboardKeys | controllerKeys | controllerAxisKeys | DualScreen_ConsumeVirtualKeys();
++#elif defined(__3DS__)
++    u32 held = hidKeysHeld();
++    u16 keys = 0;
++    if (held & KEY_A) keys |= A_BUTTON;
++    if (held & KEY_B) keys |= B_BUTTON;
++    if (held & KEY_START) keys |= START_BUTTON;
++    if (held & KEY_SELECT) keys |= SELECT_BUTTON;
++    if (held & KEY_L) keys |= L_BUTTON;
++    if (held & KEY_R) keys |= R_BUTTON;
++    if (held & KEY_UP) keys |= DPAD_UP;
++    if (held & KEY_DOWN) keys |= DPAD_DOWN;
++    if (held & KEY_LEFT) keys |= DPAD_LEFT;
++    if (held & KEY_RIGHT) keys |= DPAD_RIGHT;
++    return keys | DualScreen_ConsumeVirtualKeys();
+ #endif
+ 
+     return keyboardKeys | DualScreen_ConsumeVirtualKeys();

@@ -1,0 +1,14 @@
+BasicInfo:
+  Title: FRLG-B-Test
+  ProductCode: CTR-P-FLBT
+
+TitleInfo:
+  Category: Application
+  UniqueId: 0xff3fe
+
+Option:
+  UseOnSD: true
+  FreeProductCode: true
+  MediaFootPadding: false
+  EnableCrypt: false
+  EnableCompress: false
